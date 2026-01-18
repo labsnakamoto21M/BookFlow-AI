@@ -1,16 +1,387 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { whatsappManager } from "./whatsapp";
+import { startReminderService } from "./reminder";
+import { z } from "zod";
+import { 
+  insertServiceSchema, 
+  insertBlockedSlotSchema, 
+  insertBlacklistSchema 
+} from "@shared/schema";
+import { startOfWeek, endOfWeek, parseISO } from "date-fns";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  // Setup authentication
+  await setupAuth(app);
+  registerAuthRoutes(app);
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // Start reminder service
+  startReminderService();
+
+  // Helper to get provider profile for current user
+  async function getOrCreateProviderProfile(req: any) {
+    const userId = req.user.claims.sub;
+    let profile = await storage.getProviderProfile(userId);
+    
+    if (!profile) {
+      profile = await storage.upsertProviderProfile({
+        userId,
+        businessName: req.user.claims.first_name 
+          ? `${req.user.claims.first_name}'s Business`
+          : "Mon Entreprise",
+        description: null,
+        phone: null,
+        address: null,
+        city: null,
+        whatsappConnected: false,
+        whatsappSessionData: null,
+        stripeCustomerId: null,
+        subscriptionStatus: "trial",
+      });
+    }
+    
+    return profile;
+  }
+
+  // Provider Profile
+  app.get("/api/provider/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      res.json(profile);
+    } catch (error) {
+      console.error("Error fetching provider profile:", error);
+      res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  app.patch("/api/provider/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const updated = await storage.updateProviderProfile(profile.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating provider profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  // Dashboard Stats
+  app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const stats = await storage.getDashboardStats(profile.id);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching dashboard stats:", error);
+      res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
+  // Services
+  app.get("/api/services", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const services = await storage.getServices(profile.id);
+      res.json(services);
+    } catch (error) {
+      console.error("Error fetching services:", error);
+      res.status(500).json({ message: "Failed to fetch services" });
+    }
+  });
+
+  app.post("/api/services", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const data = insertServiceSchema.parse({ ...req.body, providerId: profile.id });
+      const service = await storage.createService(data);
+      res.status(201).json(service);
+    } catch (error) {
+      console.error("Error creating service:", error);
+      res.status(500).json({ message: "Failed to create service" });
+    }
+  });
+
+  app.patch("/api/services/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const service = await storage.getService(id);
+      
+      if (!service) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      if (service.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const updated = await storage.updateService(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating service:", error);
+      res.status(500).json({ message: "Failed to update service" });
+    }
+  });
+
+  app.delete("/api/services/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const service = await storage.getService(id);
+      
+      if (!service) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      if (service.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      await storage.deleteService(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting service:", error);
+      res.status(500).json({ message: "Failed to delete service" });
+    }
+  });
+
+  // Business Hours
+  app.get("/api/business-hours", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const hours = await storage.getBusinessHours(profile.id);
+      res.json(hours);
+    } catch (error) {
+      console.error("Error fetching business hours:", error);
+      res.status(500).json({ message: "Failed to fetch business hours" });
+    }
+  });
+
+  app.put("/api/business-hours", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { hours } = req.body;
+      
+      const hoursWithProvider = hours.map((h: any) => ({
+        ...h,
+        providerId: profile.id,
+      }));
+
+      const result = await storage.upsertBusinessHours(hoursWithProvider);
+      res.json(result);
+    } catch (error) {
+      console.error("Error updating business hours:", error);
+      res.status(500).json({ message: "Failed to update business hours" });
+    }
+  });
+
+  // Appointments
+  app.get("/api/appointments", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const startDate = req.query.start 
+        ? parseISO(req.query.start as string) 
+        : startOfWeek(new Date(), { weekStartsOn: 1 });
+      const endDate = req.query.end 
+        ? parseISO(req.query.end as string) 
+        : endOfWeek(new Date(), { weekStartsOn: 1 });
+
+      const appointments = await storage.getAppointments(profile.id, startDate, endDate);
+      
+      // Get services for each appointment
+      const services = await storage.getServices(profile.id);
+      const serviceMap = new Map(services.map(s => [s.id, s]));
+      
+      const appointmentsWithService = appointments.map(apt => ({
+        ...apt,
+        service: serviceMap.get(apt.serviceId),
+      }));
+
+      res.json(appointmentsWithService);
+    } catch (error) {
+      console.error("Error fetching appointments:", error);
+      res.status(500).json({ message: "Failed to fetch appointments" });
+    }
+  });
+
+  app.get("/api/appointments/upcoming", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const appointments = await storage.getUpcomingAppointments(profile.id);
+      
+      const services = await storage.getServices(profile.id);
+      const serviceMap = new Map(services.map(s => [s.id, s]));
+      
+      const appointmentsWithService = appointments.map(apt => ({
+        ...apt,
+        service: serviceMap.get(apt.serviceId),
+      }));
+
+      res.json(appointmentsWithService);
+    } catch (error) {
+      console.error("Error fetching upcoming appointments:", error);
+      res.status(500).json({ message: "Failed to fetch appointments" });
+    }
+  });
+
+  app.patch("/api/appointments/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const appointment = await storage.getAppointment(id);
+      
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      if (appointment.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const validStatuses = ["confirmed", "cancelled", "completed", "no-show"];
+      if (req.body.status && !validStatuses.includes(req.body.status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const updated = await storage.updateAppointment(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating appointment:", error);
+      res.status(500).json({ message: "Failed to update appointment" });
+    }
+  });
+
+  // Blocked Slots
+  app.get("/api/blocked-slots", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const startDate = req.query.start 
+        ? parseISO(req.query.start as string) 
+        : startOfWeek(new Date(), { weekStartsOn: 1 });
+      const endDate = req.query.end 
+        ? parseISO(req.query.end as string) 
+        : endOfWeek(new Date(), { weekStartsOn: 1 });
+
+      const slots = await storage.getBlockedSlots(profile.id, startDate, endDate);
+      res.json(slots);
+    } catch (error) {
+      console.error("Error fetching blocked slots:", error);
+      res.status(500).json({ message: "Failed to fetch blocked slots" });
+    }
+  });
+
+  app.post("/api/blocked-slots", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const data = insertBlockedSlotSchema.parse({ ...req.body, providerId: profile.id });
+      const slot = await storage.createBlockedSlot(data);
+      res.status(201).json(slot);
+    } catch (error) {
+      console.error("Error creating blocked slot:", error);
+      res.status(500).json({ message: "Failed to create blocked slot" });
+    }
+  });
+
+  app.delete("/api/blocked-slots/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const slot = await storage.getBlockedSlot(id);
+      
+      if (!slot) {
+        return res.status(404).json({ message: "Blocked slot not found" });
+      }
+
+      if (slot.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      await storage.deleteBlockedSlot(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting blocked slot:", error);
+      res.status(500).json({ message: "Failed to delete blocked slot" });
+    }
+  });
+
+  // Blacklist
+  app.get("/api/blacklist", isAuthenticated, async (req: any, res) => {
+    try {
+      const blacklist = await storage.getBlacklist();
+      res.json(blacklist);
+    } catch (error) {
+      console.error("Error fetching blacklist:", error);
+      res.status(500).json({ message: "Failed to fetch blacklist" });
+    }
+  });
+
+  app.post("/api/blacklist", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const data = insertBlacklistSchema.parse({ ...req.body, reportedBy: profile.id });
+      const entry = await storage.addToBlacklist(data);
+      res.status(201).json(entry);
+    } catch (error) {
+      console.error("Error adding to blacklist:", error);
+      res.status(500).json({ message: "Failed to add to blacklist" });
+    }
+  });
+
+  // Messages
+  app.get("/api/messages", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const messages = await storage.getMessages(profile.id);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  });
+
+  // WhatsApp
+  app.get("/api/whatsapp/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      
+      // Initialize session if not exists
+      await whatsappManager.initSession(profile.id);
+      
+      const status = whatsappManager.getStatus(profile.id);
+      res.json(status);
+    } catch (error) {
+      console.error("Error fetching WhatsApp status:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp status" });
+    }
+  });
+
+  app.post("/api/whatsapp/disconnect", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      await whatsappManager.disconnect(profile.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error disconnecting WhatsApp:", error);
+      res.status(500).json({ message: "Failed to disconnect WhatsApp" });
+    }
+  });
+
+  app.post("/api/whatsapp/refresh-qr", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      await whatsappManager.refreshQR(profile.id);
+      const status = whatsappManager.getStatus(profile.id);
+      res.json(status);
+    } catch (error) {
+      console.error("Error refreshing QR code:", error);
+      res.status(500).json({ message: "Failed to refresh QR code" });
+    }
+  });
 
   return httpServer;
 }
