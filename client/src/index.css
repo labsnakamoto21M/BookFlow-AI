@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* LIGHT MODE - ChatSlot professional emerald theme */
+/* LIGHT MODE - ChatSlot vibrant emerald theme (messaging app style) */
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
@@ -12,47 +12,47 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 210 20% 98%;
-  --foreground: 210 11% 15%;
+  --background: 0 0% 100%;
+  --foreground: 160 84% 16%;
 
-  --border: 210 14% 89%;
+  --border: 160 20% 88%;
 
   --card: 0 0% 100%;
-  --card-foreground: 210 11% 15%;
-  --card-border: 210 14% 89%;
+  --card-foreground: 160 84% 16%;
+  --card-border: 160 20% 88%;
 
   --sidebar: 160 84% 16%;
   --sidebar-foreground: 0 0% 100%;
   --sidebar-border: 160 84% 12%;
-  --sidebar-primary: 161 94% 30%;
+  --sidebar-primary: 160 84% 40%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 160 70% 22%;
   --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-ring: 161 94% 30%;
+  --sidebar-ring: 160 84% 40%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 210 11% 15%;
-  --popover-border: 210 14% 89%;
+  --popover-foreground: 160 84% 16%;
+  --popover-border: 160 20% 88%;
 
-  --primary: 161 94% 30%;
+  --primary: 160 84% 40%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 14% 96%;
-  --secondary-foreground: 210 11% 15%;
+  --secondary: 160 30% 95%;
+  --secondary-foreground: 160 84% 16%;
 
-  --muted: 210 14% 96%;
-  --muted-foreground: 210 11% 45%;
+  --muted: 160 20% 95%;
+  --muted-foreground: 160 30% 40%;
 
-  --accent: 160 50% 94%;
-  --accent-foreground: 160 84% 20%;
+  --accent: 160 50% 92%;
+  --accent-foreground: 160 84% 16%;
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 210 14% 83%;
-  --ring: 161 94% 30%;
+  --input: 160 20% 85%;
+  --ring: 160 84% 40%;
 
-  --chart-1: 161 94% 30%;
+  --chart-1: 160 84% 40%;
   --chart-2: 173 58% 39%;
   --chart-3: 197 71% 52%;
   --chart-4: 43 74% 66%;
@@ -118,17 +118,17 @@
   --sidebar: 200 10% 8%;
   --sidebar-foreground: 210 14% 93%;
   --sidebar-border: 200 10% 15%;
-  --sidebar-primary: 161 94% 35%;
+  --sidebar-primary: 160 84% 45%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 200 10% 15%;
   --sidebar-accent-foreground: 210 14% 93%;
-  --sidebar-ring: 161 94% 35%;
+  --sidebar-ring: 160 84% 45%;
 
   --popover: 200 10% 13%;
   --popover-foreground: 210 14% 93%;
   --popover-border: 200 10% 20%;
 
-  --primary: 161 94% 35%;
+  --primary: 160 84% 45%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 200 10% 18%;
@@ -144,9 +144,9 @@
   --destructive-foreground: 0 0% 100%;
 
   --input: 200 10% 25%;
-  --ring: 161 94% 35%;
+  --ring: 160 84% 45%;
 
-  --chart-1: 161 94% 35%;
+  --chart-1: 160 84% 45%;
   --chart-2: 173 58% 45%;
   --chart-3: 197 71% 58%;
   --chart-4: 43 74% 70%;

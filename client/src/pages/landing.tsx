@@ -7,7 +7,8 @@ import {
   Shield, 
   Zap, 
   CheckCircle,
-  ArrowRight 
+  ArrowRight,
+  Send
 } from "lucide-react";
 const features = [
   {
@@ -17,8 +18,8 @@ const features = [
   },
   {
     icon: Calendar,
-    title: "Réservations automatiques",
-    description: "Les clients réservent directement via votre assistant, sans intervention manuelle.",
+    title: "Réservations conversationnelles",
+    description: "Les clients réservent via une discussion naturelle, comme avec un ami.",
   },
   {
     icon: Clock,
@@ -68,9 +69,9 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground relative">
-                <MessageSquare className="h-4 w-4 absolute top-1 left-1" />
-                <Calendar className="h-4 w-4 absolute bottom-1 right-1" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground relative">
+                <MessageSquare className="h-4 w-4 absolute top-1 left-1.5" />
+                <Clock className="h-4 w-4 absolute bottom-1 right-1.5" />
               </div>
               <span className="font-bold text-xl">ChatSlot</span>
             </div>
@@ -105,13 +106,13 @@ export default function LandingPage() {
                 Essai gratuit de 14 jours
               </div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
-                Gérez vos{" "}
+                Vos{" "}
                 <span className="text-primary">réservations</span>{" "}
-                en toute simplicité
+                en mode chat
               </h1>
               <p className="text-lg text-muted-foreground max-w-xl">
-                L'assistant intelligent qui gère vos rendez-vous, répond à vos clients et vous protège 
-                des no-shows. Concentrez-vous sur votre métier, ChatSlot s'occupe du reste.
+                L'assistant conversationnel qui gère vos rendez-vous comme une discussion. 
+                Vos clients réservent naturellement, vous gérez tout depuis une interface familière.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button size="lg" asChild data-testid="button-get-started">
@@ -138,41 +139,29 @@ export default function LandingPage() {
             <div className="relative lg:pl-8">
               <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-br from-primary/20 to-primary/5 p-8 aspect-square flex items-center justify-center">
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent" />
-                <div className="relative z-10 bg-card rounded-xl shadow-lg p-6 w-full max-w-sm space-y-4">
-                  <div className="flex items-center gap-3 border-b pb-4">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center relative">
-                      <MessageSquare className="h-4 w-4 text-primary absolute top-1 left-1.5" />
-                      <Calendar className="h-4 w-4 text-primary absolute bottom-1 right-1.5" />
+                <div className="relative z-10 bg-card rounded-2xl shadow-lg w-full max-w-sm overflow-hidden">
+                  <div className="bg-primary px-4 py-3 flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center relative">
+                      <MessageSquare className="h-4 w-4 text-white absolute top-1.5 left-1.5" />
+                      <Clock className="h-4 w-4 text-white absolute bottom-1.5 right-1.5" />
                     </div>
-                    <div>
-                      <p className="font-medium text-sm">ChatSlot</p>
-                      <p className="text-xs text-muted-foreground">Assistant de réservation</p>
+                    <div className="text-white">
+                      <p className="font-semibold text-sm">ChatSlot</p>
+                      <p className="text-xs text-white/80">En ligne</p>
                     </div>
                   </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
-                      <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">Demain, 14h00</p>
-                        <p className="text-xs text-muted-foreground truncate">Coupe Homme - 35 min</p>
-                      </div>
-                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Confirmé</span>
+                  <div className="p-4 space-y-3 bg-gradient-to-b from-accent/30 to-accent/10">
+                    <div className="bg-white rounded-2xl rounded-tl-sm p-3 text-sm max-w-[85%] shadow-sm">
+                      Bonjour ! Je voudrais réserver une coupe demain.
                     </div>
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
-                      <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">Mercredi, 10h30</p>
-                        <p className="text-xs text-muted-foreground truncate">Coloration - 1h30</p>
-                      </div>
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">En attente</span>
+                    <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm p-3 text-sm max-w-[90%] ml-auto shadow-sm">
+                      Bien sûr ! Voici les créneaux disponibles demain : 10h, 11h30, 14h, 16h. Lequel vous convient ?
                     </div>
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
-                      <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">Vendredi, 16h00</p>
-                        <p className="text-xs text-muted-foreground truncate">Brushing - 45 min</p>
-                      </div>
-                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Confirmé</span>
+                    <div className="bg-white rounded-2xl rounded-tl-sm p-3 text-sm max-w-[60%] shadow-sm">
+                      14h parfait !
+                    </div>
+                    <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm p-3 text-sm max-w-[95%] ml-auto shadow-sm">
+                      Parfait ! Votre RDV est confirmé pour demain à 14h. Vous recevrez un rappel 1h avant.
                     </div>
                   </div>
                 </div>
@@ -309,9 +298,9 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground relative">
-                <MessageSquare className="h-3 w-3 absolute top-1 left-1" />
-                <Calendar className="h-3 w-3 absolute bottom-1 right-1" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground relative">
+                <MessageSquare className="h-3 w-3 absolute top-1 left-1.5" />
+                <Clock className="h-3 w-3 absolute bottom-1 right-1.5" />
               </div>
               <span className="font-semibold">ChatSlot</span>
             </div>
