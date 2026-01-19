@@ -58,7 +58,7 @@ export default function AbonnementPage() {
               Votre abonnement
             </CardTitle>
             <CardDescription>
-              État actuel de votre abonnement ChatSlot
+              État actuel de votre abonnement WhatsBook
             </CardDescription>
           </div>
           {isLoading ? (
@@ -115,7 +115,7 @@ export default function AbonnementPage() {
                   Abonnement expiré
                 </p>
                 <p className="text-sm text-red-700 dark:text-red-300 mt-1">
-                  Votre abonnement a expiré. Renouvelez pour continuer à utiliser ChatSlot.
+                  Votre abonnement a expiré. Renouvelez pour continuer à utiliser WhatsBook.
                 </p>
               </div>
               <Button size="lg" className="w-full sm:w-auto" data-testid="button-renew">

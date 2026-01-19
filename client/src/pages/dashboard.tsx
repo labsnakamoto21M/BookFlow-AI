@@ -11,6 +11,7 @@ import {
   TrendingUp,
   MessageSquare
 } from "lucide-react";
+import { SiWhatsapp } from "react-icons/si";
 import { format, isToday, isTomorrow, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 import type { Appointment, Service, ProviderProfile } from "@shared/schema";
@@ -90,7 +91,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Tableau de bord</h1>
           <p className="text-muted-foreground">
-            Bienvenue sur ChatSlot{profile?.businessName ? `, ${profile.businessName}` : ""}
+            Bienvenue sur WhatsBook{profile?.businessName ? `, ${profile.businessName}` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -98,12 +99,12 @@ export default function DashboardPage() {
             <Skeleton className="h-6 w-32" />
           ) : profile?.whatsappConnected ? (
             <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-              <MessageSquare className="h-3 w-3 mr-1" />
+              <SiWhatsapp className="h-3 w-3 mr-1" />
               WhatsApp connecté
             </Badge>
           ) : (
             <Badge variant="secondary">
-              <MessageSquare className="h-3 w-3 mr-1" />
+              <SiWhatsapp className="h-3 w-3 mr-1" />
               WhatsApp non connecté
             </Badge>
           )}
@@ -201,7 +202,7 @@ export default function DashboardPage() {
           {/* Messages Stats */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
-              <CardTitle className="text-lg font-semibold">Messages</CardTitle>
+              <CardTitle className="text-lg font-semibold">Activité WhatsApp</CardTitle>
               <Badge variant="secondary" className="text-xs">
                 <MessageSquare className="h-3 w-3 mr-1" />
                 Cette semaine
@@ -210,7 +211,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="flex items-center gap-6">
                 <div className="h-16 w-16 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <MessageSquare className="h-8 w-8 text-primary" />
+                  <SiWhatsapp className="h-8 w-8 text-primary" />
                 </div>
                 <div>
                   {statsLoading ? (
