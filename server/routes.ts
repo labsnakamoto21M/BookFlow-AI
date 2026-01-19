@@ -383,5 +383,23 @@ export async function registerRoutes(
     }
   });
 
+  // QR Code as base64 image
+  app.get("/api/whatsapp/qr", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const status = whatsappManager.getStatus(profile.id);
+      
+      if (!status.qrCode) {
+        return res.status(404).json({ message: "QR code not available" });
+      }
+      
+      // Return QR code as base64 data URL
+      res.json({ qrCode: status.qrCode });
+    } catch (error) {
+      console.error("Error fetching QR code:", error);
+      res.status(500).json({ message: "Failed to fetch QR code" });
+    }
+  });
+
   return httpServer;
 }

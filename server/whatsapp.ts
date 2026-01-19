@@ -5,8 +5,10 @@ import { storage } from "./storage";
 import { format, addDays, startOfDay, endOfDay, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 
+type ClientType = InstanceType<typeof Client>;
+
 interface WhatsAppSession {
-  client: Client;
+  client: ClientType;
   qrCode: string | null;
   connected: boolean;
   phoneNumber: string | null;
@@ -22,9 +24,13 @@ class WhatsAppManager {
     }
 
     const client = new Client({
-      authStrategy: new LocalAuth({ clientId: providerId }),
+      authStrategy: new LocalAuth({ 
+        clientId: providerId,
+        dataPath: "./.wwebjs_auth"
+      }),
       puppeteer: {
         headless: true,
+        executablePath: process.env.CHROMIUM_PATH || "/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium",
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -32,7 +38,9 @@ class WhatsAppManager {
           "--disable-accelerated-2d-canvas",
           "--no-first-run",
           "--no-zygote",
-          "--disable-gpu"
+          "--disable-gpu",
+          "--disable-extensions",
+          "--single-process"
         ],
       },
     });
