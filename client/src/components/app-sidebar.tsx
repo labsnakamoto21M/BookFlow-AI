@@ -2,13 +2,13 @@ import { useLocation, Link } from "wouter";
 import {
   Calendar,
   MessageSquare,
+  Settings,
   LayoutDashboard,
   ShieldBan,
   Briefcase,
   Clock,
   LogOut,
   CreditCard,
-  Send,
 } from "lucide-react";
 import {
   Sidebar,
@@ -53,10 +53,10 @@ const whatsappMenuItems = [
   {
     title: "Connexion WhatsApp",
     url: "/whatsapp",
-    icon: Send,
+    icon: MessageSquare,
   },
   {
-    title: "Conversations",
+    title: "Messages",
     url: "/messages",
     icon: MessageSquare,
   },
@@ -87,13 +87,13 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 relative">
-            <MessageSquare className="h-5 w-5 absolute top-1.5 left-2" />
-            <Clock className="h-5 w-5 absolute bottom-1.5 right-2" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 relative">
+            <MessageSquare className="h-4 w-4 absolute top-1.5 left-1.5" />
+            <Calendar className="h-4 w-4 absolute bottom-1.5 right-1.5" />
           </div>
           <div className="flex flex-col">
-            <span className="font-bold text-lg">ChatSlot</span>
-            <span className="text-xs text-sidebar-foreground/70">Votre assistant</span>
+            <span className="font-semibold text-lg">ChatSlot</span>
+            <span className="text-xs text-sidebar-foreground/70">Gestion de réservations</span>
           </div>
         </div>
       </SidebarHeader>
@@ -118,7 +118,7 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Messagerie</SidebarGroupLabel>
+          <SidebarGroupLabel>Communication</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {whatsappMenuItems.map((item) => (
