@@ -10,7 +10,6 @@ import {
   LogOut,
   CreditCard,
 } from "lucide-react";
-import { SiWhatsapp } from "react-icons/si";
 import {
   Sidebar,
   SidebarContent,
@@ -54,7 +53,7 @@ const whatsappMenuItems = [
   {
     title: "Connexion WhatsApp",
     url: "/whatsapp",
-    icon: SiWhatsapp,
+    icon: MessageSquare,
   },
   {
     title: "Messages",
@@ -88,12 +87,13 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10">
-            <SiWhatsapp className="h-6 w-6" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 relative">
+            <MessageSquare className="h-4 w-4 absolute top-1.5 left-1.5" />
+            <Calendar className="h-4 w-4 absolute bottom-1.5 right-1.5" />
           </div>
           <div className="flex flex-col">
-            <span className="font-semibold text-lg">WhatsBook</span>
-            <span className="text-xs text-sidebar-foreground/70">Assistant de réservation</span>
+            <span className="font-semibold text-lg">ChatSlot</span>
+            <span className="text-xs text-sidebar-foreground/70">Gestion de réservations</span>
           </div>
         </div>
       </SidebarHeader>
@@ -118,7 +118,7 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>WhatsApp</SidebarGroupLabel>
+          <SidebarGroupLabel>Communication</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {whatsappMenuItems.map((item) => (

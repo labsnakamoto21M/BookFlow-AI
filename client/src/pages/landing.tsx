@@ -9,18 +9,16 @@ import {
   CheckCircle,
   ArrowRight 
 } from "lucide-react";
-import { SiWhatsapp } from "react-icons/si";
-
 const features = [
   {
     icon: MessageSquare,
-    title: "Bot WhatsApp intelligent",
+    title: "Assistant intelligent",
     description: "Répondez automatiquement aux questions sur vos services et tarifs 24h/24.",
   },
   {
     icon: Calendar,
     title: "Réservations automatiques",
-    description: "Les clients réservent directement via WhatsApp, sans intervention manuelle.",
+    description: "Les clients réservent directement via votre assistant, sans intervention manuelle.",
   },
   {
     icon: Clock,
@@ -35,7 +33,7 @@ const features = [
   {
     icon: Zap,
     title: "Configuration simple",
-    description: "Connectez votre WhatsApp en scannant un QR code et configurez vos services.",
+    description: "Configurez vos services et connectez-vous en quelques minutes.",
   },
   {
     icon: CheckCircle,
@@ -53,7 +51,7 @@ const testimonials = [
   {
     name: "Thomas L.",
     role: "Barbier",
-    content: "Mes clients adorent pouvoir réserver via WhatsApp. Plus besoin de répondre au téléphone !",
+    content: "Mes clients adorent pouvoir réserver facilement. Plus besoin de répondre au téléphone !",
   },
   {
     name: "Sophie M.",
@@ -70,10 +68,11 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <SiWhatsapp className="h-5 w-5" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground relative">
+                <MessageSquare className="h-4 w-4 absolute top-1 left-1" />
+                <Calendar className="h-4 w-4 absolute bottom-1 right-1" />
               </div>
-              <span className="font-bold text-xl">WhatsBook</span>
+              <span className="font-bold text-xl">ChatSlot</span>
             </div>
             <div className="hidden md:flex items-center gap-6">
               <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">
@@ -106,13 +105,13 @@ export default function LandingPage() {
                 Essai gratuit de 14 jours
               </div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
-                Automatisez vos{" "}
+                Gérez vos{" "}
                 <span className="text-primary">réservations</span>{" "}
-                via WhatsApp
+                en toute simplicité
               </h1>
               <p className="text-lg text-muted-foreground max-w-xl">
                 L'assistant intelligent qui gère vos rendez-vous, répond à vos clients et vous protège 
-                des no-shows. Concentrez-vous sur votre métier, WhatsBook s'occupe du reste.
+                des no-shows. Concentrez-vous sur votre métier, ChatSlot s'occupe du reste.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button size="lg" asChild data-testid="button-get-started">
@@ -140,27 +139,40 @@ export default function LandingPage() {
               <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-br from-primary/20 to-primary/5 p-8 aspect-square flex items-center justify-center">
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent" />
                 <div className="relative z-10 bg-card rounded-xl shadow-lg p-6 w-full max-w-sm space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <SiWhatsapp className="h-5 w-5 text-primary" />
+                  <div className="flex items-center gap-3 border-b pb-4">
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center relative">
+                      <MessageSquare className="h-4 w-4 text-primary absolute top-1 left-1.5" />
+                      <Calendar className="h-4 w-4 text-primary absolute bottom-1 right-1.5" />
                     </div>
                     <div>
-                      <p className="font-medium text-sm">WhatsBook Bot</p>
-                      <p className="text-xs text-muted-foreground">En ligne</p>
+                      <p className="font-medium text-sm">ChatSlot</p>
+                      <p className="text-xs text-muted-foreground">Assistant de réservation</p>
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <div className="bg-muted rounded-lg p-3 text-sm max-w-[80%]">
-                      Bonjour ! Je voudrais réserver une coupe demain.
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+                      <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">Demain, 14h00</p>
+                        <p className="text-xs text-muted-foreground truncate">Coupe Homme - 35 min</p>
+                      </div>
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Confirmé</span>
                     </div>
-                    <div className="bg-primary text-primary-foreground rounded-lg p-3 text-sm max-w-[85%] ml-auto">
-                      Bien sûr ! Voici les créneaux disponibles demain : 10h, 11h30, 14h, 16h. Lequel vous convient ?
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+                      <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">Mercredi, 10h30</p>
+                        <p className="text-xs text-muted-foreground truncate">Coloration - 1h30</p>
+                      </div>
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">En attente</span>
                     </div>
-                    <div className="bg-muted rounded-lg p-3 text-sm max-w-[60%]">
-                      14h parfait !
-                    </div>
-                    <div className="bg-primary text-primary-foreground rounded-lg p-3 text-sm max-w-[90%] ml-auto">
-                      Parfait ! Votre RDV est confirmé pour demain à 14h. Vous recevrez un rappel 1h avant.
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+                      <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">Vendredi, 16h00</p>
+                        <p className="text-xs text-muted-foreground truncate">Brushing - 45 min</p>
+                      </div>
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Confirmé</span>
                     </div>
                   </div>
                 </div>
@@ -205,7 +217,7 @@ export default function LandingPage() {
               Ils nous font confiance
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Découvrez comment WhatsBook transforme le quotidien des prestataires de services.
+              Découvrez comment ChatSlot transforme le quotidien des prestataires de services.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
@@ -258,7 +270,7 @@ export default function LandingPage() {
               <div className="grid sm:grid-cols-2 gap-4 mt-8 mb-8">
                 <div className="flex items-center gap-2">
                   <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                  <span>Bot WhatsApp intelligent</span>
+                  <span>Assistant intelligent</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
@@ -297,13 +309,14 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <SiWhatsapp className="h-4 w-4" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground relative">
+                <MessageSquare className="h-3 w-3 absolute top-1 left-1" />
+                <Calendar className="h-3 w-3 absolute bottom-1 right-1" />
               </div>
-              <span className="font-semibold">WhatsBook</span>
+              <span className="font-semibold">ChatSlot</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} WhatsBook. Tous droits réservés.
+              © {new Date().getFullYear()} ChatSlot. Tous droits réservés.
             </p>
           </div>
         </div>

@@ -1,8 +1,8 @@
-# WhatsBook - WhatsApp Booking Assistant
+# ChatSlot - Gestion de Réservations Intelligente
 
 ## Overview
 
-WhatsBook is a SaaS application that enables service providers (hairdressers, beauticians, etc.) to automate appointment bookings through WhatsApp. The platform provides an intelligent WhatsApp bot that handles client inquiries, automatic appointment scheduling, reminder notifications, and a shared blacklist system for problematic clients.
+ChatSlot is a SaaS application that enables service providers (hairdressers, beauticians, etc.) to manage and automate their appointment bookings. The platform provides an intelligent assistant connected to WhatsApp that handles client inquiries, automatic appointment scheduling, reminder notifications, and a shared blacklist system for problematic clients.
 
 The application follows a monorepo structure with a React frontend, Express backend, PostgreSQL database, and WhatsApp Web integration for messaging capabilities.
 
