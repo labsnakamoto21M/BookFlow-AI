@@ -2,75 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
-/* LIGHT MODE - WhatsApp-inspired professional green theme */
+/* CYPHERPUNK THEME - Dark Underground Aesthetic */
 :root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
+  --button-outline: rgba(57,255,20, .15);
+  --badge-outline: rgba(57,255,20, .10);
 
   --opaque-button-border-intensity: -8;
 
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
+  --elevate-1: rgba(57,255,20, .05);
+  --elevate-2: rgba(57,255,20, .12);
 
-  --background: 0 0% 98%;
-  --foreground: 210 11% 15%;
+  /* Pure black background */
+  --background: 0 0% 0%;
+  --foreground: 60 5% 90%;
 
-  --border: 210 14% 89%;
+  --border: 120 100% 25%;
 
-  --card: 0 0% 100%;
-  --card-foreground: 210 11% 15%;
-  --card-border: 210 14% 89%;
+  --card: 0 0% 3%;
+  --card-foreground: 60 5% 90%;
+  --card-border: 120 100% 20%;
 
-  --sidebar: 145 63% 42%;
-  --sidebar-foreground: 0 0% 100%;
-  --sidebar-border: 145 63% 35%;
-  --sidebar-primary: 145 70% 35%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 145 63% 38%;
-  --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-ring: 145 63% 42%;
+  /* Sidebar - Dark with neon accents */
+  --sidebar: 0 0% 2%;
+  --sidebar-foreground: 60 5% 90%;
+  --sidebar-border: 120 100% 20%;
+  --sidebar-primary: 110 100% 55%;
+  --sidebar-primary-foreground: 0 0% 0%;
+  --sidebar-accent: 110 100% 20%;
+  --sidebar-accent-foreground: 110 100% 55%;
+  --sidebar-ring: 110 100% 55%;
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 210 11% 15%;
-  --popover-border: 210 14% 89%;
+  --popover: 0 0% 3%;
+  --popover-foreground: 60 5% 90%;
+  --popover-border: 120 100% 20%;
 
-  --primary: 145 63% 42%;
-  --primary-foreground: 0 0% 100%;
+  /* Neon Matrix Green - #39FF14 = hsl(110, 100%, 54%) */
+  --primary: 110 100% 54%;
+  --primary-foreground: 0 0% 0%;
 
-  --secondary: 210 14% 96%;
-  --secondary-foreground: 210 11% 15%;
+  --secondary: 0 0% 8%;
+  --secondary-foreground: 60 5% 90%;
 
-  --muted: 210 14% 96%;
-  --muted-foreground: 210 11% 45%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 60 5% 60%;
 
-  --accent: 145 50% 94%;
-  --accent-foreground: 145 63% 32%;
+  --accent: 110 100% 10%;
+  --accent-foreground: 110 100% 55%;
 
-  --destructive: 0 84% 60%;
+  --destructive: 0 100% 50%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 210 14% 83%;
-  --ring: 145 63% 42%;
+  --input: 0 0% 15%;
+  --ring: 110 100% 54%;
 
-  --chart-1: 145 63% 42%;
-  --chart-2: 173 58% 39%;
-  --chart-3: 197 71% 52%;
-  --chart-4: 43 74% 66%;
-  --chart-5: 27 87% 67%;
+  --chart-1: 110 100% 54%;
+  --chart-2: 140 100% 45%;
+  --chart-3: 80 100% 50%;
+  --chart-4: 160 100% 40%;
+  --chart-5: 50 100% 50%;
 
   --font-sans: 'Inter', sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  --radius: .5rem;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --radius: 0.125rem;
 
-  --shadow-2xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-xs: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-2xs: 0 0 2px 0 rgba(57, 255, 20, 0.1);
+  --shadow-xs: 0 0 4px 0 rgba(57, 255, 20, 0.15);
+  --shadow-sm: 0 0 6px 0 rgba(57, 255, 20, 0.2);
+  --shadow: 0 0 10px 0 rgba(57, 255, 20, 0.25);
+  --shadow-md: 0 0 15px 0 rgba(57, 255, 20, 0.3);
+  --shadow-lg: 0 0 25px 0 rgba(57, 255, 20, 0.35);
+  --shadow-xl: 0 0 35px 0 rgba(57, 255, 20, 0.4);
+  --shadow-2xl: 0 0 50px 0 rgba(57, 255, 20, 0.5);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -94,72 +97,79 @@
 
   --destructive-border: hsl(var(--destructive));
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Neon glow effect for borders */
+  --neon-glow: 0 0 5px rgba(57, 255, 20, 0.5), 0 0 10px rgba(57, 255, 20, 0.3), 0 0 15px rgba(57, 255, 20, 0.2);
+  --neon-glow-strong: 0 0 10px rgba(57, 255, 20, 0.7), 0 0 20px rgba(57, 255, 20, 0.5), 0 0 30px rgba(57, 255, 20, 0.3);
 }
 
-/* DARK MODE */
+/* DARK MODE - Same as root for Cypherpunk (always dark) */
 .dark {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  --button-outline: rgba(57,255,20, .15);
+  --badge-outline: rgba(57,255,20, .10);
 
   --opaque-button-border-intensity: 9;
 
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
+  --elevate-1: rgba(57,255,20, .06);
+  --elevate-2: rgba(57,255,20, .14);
 
-  --background: 200 10% 10%;
-  --foreground: 210 14% 93%;
+  --background: 0 0% 0%;
+  --foreground: 60 5% 90%;
 
-  --border: 200 10% 20%;
+  --border: 120 100% 25%;
 
-  --card: 200 10% 13%;
-  --card-foreground: 210 14% 93%;
-  --card-border: 200 10% 20%;
+  --card: 0 0% 3%;
+  --card-foreground: 60 5% 90%;
+  --card-border: 120 100% 20%;
 
-  --sidebar: 200 10% 8%;
-  --sidebar-foreground: 210 14% 93%;
-  --sidebar-border: 200 10% 15%;
-  --sidebar-primary: 145 63% 42%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 200 10% 15%;
-  --sidebar-accent-foreground: 210 14% 93%;
-  --sidebar-ring: 145 63% 42%;
+  --sidebar: 0 0% 2%;
+  --sidebar-foreground: 60 5% 90%;
+  --sidebar-border: 120 100% 20%;
+  --sidebar-primary: 110 100% 55%;
+  --sidebar-primary-foreground: 0 0% 0%;
+  --sidebar-accent: 110 100% 20%;
+  --sidebar-accent-foreground: 110 100% 55%;
+  --sidebar-ring: 110 100% 55%;
 
-  --popover: 200 10% 13%;
-  --popover-foreground: 210 14% 93%;
-  --popover-border: 200 10% 20%;
+  --popover: 0 0% 3%;
+  --popover-foreground: 60 5% 90%;
+  --popover-border: 120 100% 20%;
 
-  --primary: 145 63% 45%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 110 100% 54%;
+  --primary-foreground: 0 0% 0%;
 
-  --secondary: 200 10% 18%;
-  --secondary-foreground: 210 14% 93%;
+  --secondary: 0 0% 8%;
+  --secondary-foreground: 60 5% 90%;
 
-  --muted: 200 10% 18%;
-  --muted-foreground: 210 11% 60%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 60 5% 60%;
 
-  --accent: 145 40% 18%;
-  --accent-foreground: 145 63% 65%;
+  --accent: 110 100% 10%;
+  --accent-foreground: 110 100% 55%;
 
-  --destructive: 0 72% 51%;
+  --destructive: 0 100% 50%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 200 10% 25%;
-  --ring: 145 63% 45%;
+  --input: 0 0% 15%;
+  --ring: 110 100% 54%;
 
-  --chart-1: 145 63% 50%;
-  --chart-2: 173 58% 45%;
-  --chart-3: 197 71% 58%;
-  --chart-4: 43 74% 70%;
-  --chart-5: 27 87% 70%;
+  --chart-1: 110 100% 54%;
+  --chart-2: 140 100% 45%;
+  --chart-3: 80 100% 50%;
+  --chart-4: 160 100% 40%;
+  --chart-5: 50 100% 50%;
 
-  --shadow-2xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-xs: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
-  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  --shadow-2xs: 0 0 2px 0 rgba(57, 255, 20, 0.15);
+  --shadow-xs: 0 0 4px 0 rgba(57, 255, 20, 0.2);
+  --shadow-sm: 0 0 6px 0 rgba(57, 255, 20, 0.25);
+  --shadow: 0 0 10px 0 rgba(57, 255, 20, 0.3);
+  --shadow-md: 0 0 15px 0 rgba(57, 255, 20, 0.35);
+  --shadow-lg: 0 0 25px 0 rgba(57, 255, 20, 0.4);
+  --shadow-xl: 0 0 35px 0 rgba(57, 255, 20, 0.45);
+  --shadow-2xl: 0 0 50px 0 rgba(57, 255, 20, 0.55);
+
+  --neon-glow: 0 0 5px rgba(57, 255, 20, 0.5), 0 0 10px rgba(57, 255, 20, 0.3), 0 0 15px rgba(57, 255, 20, 0.2);
+  --neon-glow-strong: 0 0 10px rgba(57, 255, 20, 0.7), 0 0 20px rgba(57, 255, 20, 0.5), 0 0 30px rgba(57, 255, 20, 0.3);
 }
 
 @layer base {
@@ -169,6 +179,11 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  /* Force dark mode always for Cypherpunk theme */
+  html {
+    color-scheme: dark;
   }
 }
 
@@ -181,6 +196,53 @@
     content: attr(data-placeholder);
     color: hsl(var(--muted-foreground));
     pointer-events: none;
+  }
+
+  /* Neon glow utilities */
+  .neon-border {
+    box-shadow: var(--neon-glow);
+  }
+
+  .neon-border-strong {
+    box-shadow: var(--neon-glow-strong);
+  }
+
+  .neon-text {
+    text-shadow: 0 0 5px rgba(57, 255, 20, 0.5), 0 0 10px rgba(57, 255, 20, 0.3);
+  }
+
+  .neon-text-strong {
+    text-shadow: 0 0 10px rgba(57, 255, 20, 0.7), 0 0 20px rgba(57, 255, 20, 0.5), 0 0 30px rgba(57, 255, 20, 0.3);
+  }
+
+  /* Terminal style text animation */
+  .terminal-cursor::after {
+    content: "_";
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* Scanline effect for retro feel */
+  .scanlines::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.1) 2px,
+      rgba(0, 0, 0, 0.1) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
   }
 
   .no-default-hover-elevate {}

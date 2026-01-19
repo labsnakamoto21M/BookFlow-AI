@@ -9,6 +9,7 @@ import {
   Clock,
   LogOut,
   CreditCard,
+  Zap,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import {
@@ -26,6 +27,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { LightningLogo } from "@/components/lightning-logo";
 
 const mainMenuItems = [
   {
@@ -85,27 +87,25 @@ export function AppSidebar() {
     : "U";
 
   return (
-    <Sidebar>
-      <SidebarHeader className="p-4 border-b border-sidebar-border">
+    <Sidebar className="border-r border-primary/30">
+      <SidebarHeader className="p-4 border-b border-primary/30">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10">
-            <SiWhatsapp className="h-6 w-6" />
-          </div>
+          <LightningLogo size="md" />
           <div className="flex flex-col">
-            <span className="font-semibold text-lg">WhatsBook</span>
-            <span className="text-xs text-sidebar-foreground/70">Assistant de réservation</span>
+            <span className="font-mono font-semibold text-lg text-primary neon-text">ChatSlot</span>
+            <span className="text-xs text-muted-foreground font-mono">v1.0 // Terminal</span>
           </div>
         </div>
       </SidebarHeader>
       
       <SidebarContent className="pt-2">
         <SidebarGroup>
-          <SidebarGroupLabel>Principal</SidebarGroupLabel>
+          <SidebarGroupLabel className="font-mono text-primary/70">{"// "} Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {mainMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location === item.url}>
+                  <SidebarMenuButton asChild isActive={location === item.url} className="font-mono">
                     <Link href={item.url} data-testid={`link-${item.url.replace("/", "") || "dashboard"}`}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
@@ -118,12 +118,12 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>WhatsApp</SidebarGroupLabel>
+          <SidebarGroupLabel className="font-mono text-primary/70">{"// "} WhatsApp</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {whatsappMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location === item.url}>
+                  <SidebarMenuButton asChild isActive={location === item.url} className="font-mono">
                     <Link href={item.url} data-testid={`link-${item.url.replace("/", "")}`}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
@@ -136,12 +136,12 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Administration</SidebarGroupLabel>
+          <SidebarGroupLabel className="font-mono text-primary/70">{"// "} Admin</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {adminMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location === item.url}>
+                  <SidebarMenuButton asChild isActive={location === item.url} className="font-mono">
                     <Link href={item.url} data-testid={`link-${item.url.replace("/", "")}`}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
@@ -154,19 +154,19 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-sidebar-border">
+      <SidebarFooter className="p-4 border-t border-primary/30">
         <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9">
+          <Avatar className="h-9 w-9 rounded-sm border border-primary/30">
             <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || "Utilisateur"} />
-            <AvatarFallback className="bg-white/10 text-sidebar-foreground text-sm">
+            <AvatarFallback className="bg-primary/10 text-primary text-sm font-mono rounded-sm">
               {initials}
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col flex-1 min-w-0">
-            <span className="text-sm font-medium truncate">
+            <span className="text-sm font-mono font-medium truncate text-primary">
               {user?.firstName} {user?.lastName}
             </span>
-            <span className="text-xs text-sidebar-foreground/70 truncate">
+            <span className="text-xs text-muted-foreground font-mono truncate">
               {user?.email}
             </span>
           </div>
@@ -174,12 +174,15 @@ export function AppSidebar() {
             variant="ghost"
             size="icon"
             onClick={() => logout()}
-            className="text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-white/10"
+            className="rounded-sm"
             data-testid="button-logout"
           >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
+        <p className="text-xs text-primary/50 font-mono text-center mt-3 neon-text">
+          "Crack the code."
+        </p>
       </SidebarFooter>
     </Sidebar>
   );

@@ -91,7 +91,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Tableau de bord</h1>
           <p className="text-muted-foreground">
-            Bienvenue sur WhatsBook{profile?.businessName ? `, ${profile.businessName}` : ""}
+            Bienvenue sur ChatSlot{profile?.businessName ? `, ${profile.businessName}` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
