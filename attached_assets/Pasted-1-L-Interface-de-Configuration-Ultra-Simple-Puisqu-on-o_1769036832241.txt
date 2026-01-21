@@ -1,0 +1,29 @@
+1. L'Interface de Configuration "Ultra-Simple"
+Puisqu'on oublie la gestion complexe des punitions (blacklist), ton Dashboard doit être une page unique où la prestataire règle sa "machine".
+Le formulaire idéal (Une seule page) :
+Ma Grille : 30min = X€, 1h = Y€, etc.
+Mes Options : Une liste de cases à cocher (GFE, An4l, Finitio.n, etc.) avec le prix du supplément.
+Mes Horaires : Un tableau simple (Lundi 10h-20h, etc.).
+Ma Localisation : Le quartier (pour le premier message).
+Le Bouton Magique : "Activer / Désactiver le bot".
+2. Le Flux de Conversation "Gagnant"
+Le bot doit être un expert en clôture de vente. Voici le script idéal qu'on doit paramétrer dans l'IA :
+Phase d'info : Si le client demande un prix ou un service, le bot donne l'info de manière humaine (style SMS, censure des mots crus).
+Phase d'engagement : À la fin de chaque réponse, le bot pose une question fermée. "Tu veux passer combien de temps avec moi ?" ou "On se voit aujourd'hui ?".
+Phase de proposition : Si le client dit "1h", le bot regarde l'agenda et propose deux choix seulement (pour éviter l'indécision) : "Ok pour 1h. Il me reste 14h30 ou 16h00. Tu préfères quoi ?".
+Phase de confirmation : Dès que le client choisit, le bot enregistre le nom/numéro dans l'agenda interne et envoie : "C'est noté pour 14h30 ! Je t'envoie l'adresse 30 min avant. À tout de suite 😉".
+3. La Sécurité du Prestataire (L'adresse)
+C'est un point qu'on n'a pas encore abordé mais qui est vital : Quand donner l'adresse ?
+Stratégie MVP : Le bot ne donne jamais l'adresse précise automatiquement.
+Il donne le quartier au début.
+La prestataire reçoit une notification (ou regarde son agenda) et c'est elle qui envoie l'adresse manuellement quand elle est prête, ou tu programmes un message automatique qui part 30 minutes avant le RDV (si tu as activé le "Always On").
+Prochaines étapes pour ton Replit Agent :
+Puisqu'on a épuré le projet, voici le prompt de "nettoyage" pour stabiliser l'application :
+"Simplifions l'application ChatSlot pour le MVP. Concentre-toi sur la fluidité de réservation :
+Dashboard : Crée une page de configuration unique avec la grille tarifaire (durée/prix) et les options (checklist services). Supprime les fonctions de blacklist pour l'instant.
+Agenda : Affiche une vue simple des rendez-vous pris. Permet juste de bloquer des heures manuellement.
+Intelligence du Bot :
+Utilise le profil de la prestataire pour répondre aux questions.
+Adopte un ton humain, style SMS, avec censure des termes sexuels (An4l, Fell4tion, etc.).
+Le bot doit toujours essayer de conclure en proposant 2 créneaux horaires disponibles dans les prochaines 48h.
+Notification : Dès qu'un rendez-vous est pris, la prestataire doit voir une notification claire sur son dashboard (et idéalement recevoir un message WhatsApp du bot sur son propre numéro)."
