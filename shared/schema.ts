@@ -95,6 +95,40 @@ export const messageLog = pgTable("message_log", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Client reliability tracking (global no-show counter)
+export const clientReliability = pgTable("client_reliability", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  phone: text("phone").notNull().unique(),
+  noShowTotal: integer("no_show_total").default(0),
+  lastNoShowDate: timestamp("last_no_show_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_client_reliability_phone").on(table.phone),
+]);
+
+// Provider-specific blocks (personal blocklist)
+export const providerBlocks = pgTable("provider_blocks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").notNull(),
+  phone: text("phone").notNull(),
+  reason: text("reason"),
+  blockedAt: timestamp("blocked_at").defaultNow(),
+}, (table) => [
+  index("idx_provider_blocks_provider").on(table.providerId),
+  index("idx_provider_blocks_phone").on(table.phone),
+]);
+
+// No-show reports (track who reported whom)
+export const noShowReports = pgTable("no_show_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").notNull(),
+  phone: text("phone").notNull(),
+  reportedAt: timestamp("reported_at").defaultNow(),
+}, (table) => [
+  index("idx_no_show_reports_provider").on(table.providerId),
+]);
+
 // Relations
 export const providerProfilesRelations = relations(providerProfiles, ({ many }) => ({
   services: many(services),
@@ -159,6 +193,22 @@ export const insertBlacklistSchema = createInsertSchema(blacklist).omit({
   createdAt: true,
 });
 
+export const insertClientReliabilitySchema = createInsertSchema(clientReliability).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertProviderBlockSchema = createInsertSchema(providerBlocks).omit({
+  id: true,
+  blockedAt: true,
+});
+
+export const insertNoShowReportSchema = createInsertSchema(noShowReports).omit({
+  id: true,
+  reportedAt: true,
+});
+
 // Types
 export type ProviderProfile = typeof providerProfiles.$inferSelect;
 export type InsertProviderProfile = z.infer<typeof insertProviderProfileSchema>;
@@ -179,3 +229,12 @@ export type BlacklistEntry = typeof blacklist.$inferSelect;
 export type InsertBlacklist = z.infer<typeof insertBlacklistSchema>;
 
 export type MessageLogEntry = typeof messageLog.$inferSelect;
+
+export type ClientReliability = typeof clientReliability.$inferSelect;
+export type InsertClientReliability = z.infer<typeof insertClientReliabilitySchema>;
+
+export type ProviderBlock = typeof providerBlocks.$inferSelect;
+export type InsertProviderBlock = z.infer<typeof insertProviderBlockSchema>;
+
+export type NoShowReport = typeof noShowReports.$inferSelect;
+export type InsertNoShowReport = z.infer<typeof insertNoShowReportSchema>;

@@ -17,6 +17,7 @@ import AgendaPage from "@/pages/agenda";
 import WhatsAppPage from "@/pages/whatsapp";
 import MessagesPage from "@/pages/messages";
 import BlacklistPage from "@/pages/blacklist";
+import SignalementsPage from "@/pages/signalements";
 import AbonnementPage from "@/pages/abonnement";
 import NotFound from "@/pages/not-found";
 
@@ -44,6 +45,7 @@ function AuthenticatedRouter() {
               <Route path="/whatsapp" component={WhatsAppPage} />
               <Route path="/messages" component={MessagesPage} />
               <Route path="/blacklist" component={BlacklistPage} />
+              <Route path="/signalements" component={SignalementsPage} />
               <Route path="/abonnement" component={AbonnementPage} />
               <Route component={NotFound} />
             </Switch>

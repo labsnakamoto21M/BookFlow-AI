@@ -6,6 +6,9 @@ import {
   blacklist, 
   messageLog,
   providerProfiles,
+  clientReliability,
+  providerBlocks,
+  noShowReports,
   type Service, 
   type InsertService,
   type BusinessHours,
@@ -19,6 +22,9 @@ import {
   type MessageLogEntry,
   type ProviderProfile,
   type InsertProviderProfile,
+  type ClientReliability,
+  type ProviderBlock,
+  type NoShowReport,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql, desc, count } from "drizzle-orm";
@@ -73,6 +79,19 @@ export interface IStorage {
     totalClients: number;
     messagesThisWeek: number;
   }>;
+  
+  // Client Reliability (No-Show Tracking)
+  getClientReliability(phone: string): Promise<ClientReliability | undefined>;
+  incrementNoShow(phone: string, providerId: string): Promise<ClientReliability>;
+  
+  // Provider Blocks (Personal Blocklist)
+  getProviderBlocks(providerId: string): Promise<ProviderBlock[]>;
+  blockClient(providerId: string, phone: string, reason?: string): Promise<ProviderBlock>;
+  unblockClient(providerId: string, phone: string): Promise<void>;
+  isBlockedByProvider(providerId: string, phone: string): Promise<boolean>;
+  
+  // No-Show Reports
+  getNoShowReports(providerId: string): Promise<NoShowReport[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -331,6 +350,104 @@ export class DatabaseStorage implements IStorage {
       totalClients: clientsResult?.length || 0,
       messagesThisWeek: messagesResult?.count || 0,
     };
+  }
+
+  // Client Reliability (No-Show Tracking)
+  async getClientReliability(phone: string): Promise<ClientReliability | undefined> {
+    const normalizedPhone = phone.replace(/\s+/g, "").replace(/-/g, "");
+    const [entry] = await db.select().from(clientReliability).where(
+      sql`REPLACE(REPLACE(${clientReliability.phone}, ' ', ''), '-', '') = ${normalizedPhone}`
+    );
+    return entry;
+  }
+
+  async incrementNoShow(phone: string, providerId: string): Promise<ClientReliability> {
+    const normalizedPhone = phone.replace(/\s+/g, "").replace(/-/g, "");
+    
+    // Create no-show report
+    await db.insert(noShowReports).values({ providerId, phone: normalizedPhone });
+    
+    // Check if client exists in reliability table
+    const existing = await this.getClientReliability(normalizedPhone);
+    
+    if (existing) {
+      const [updated] = await db
+        .update(clientReliability)
+        .set({ 
+          noShowTotal: (existing.noShowTotal || 0) + 1,
+          lastNoShowDate: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(clientReliability.id, existing.id))
+        .returning();
+      return updated;
+    }
+    
+    // Create new entry
+    const [result] = await db.insert(clientReliability).values({
+      phone: normalizedPhone,
+      noShowTotal: 1,
+      lastNoShowDate: new Date(),
+    }).returning();
+    return result;
+  }
+
+  // Provider Blocks (Personal Blocklist)
+  async getProviderBlocks(providerId: string): Promise<ProviderBlock[]> {
+    return db.select().from(providerBlocks)
+      .where(eq(providerBlocks.providerId, providerId))
+      .orderBy(desc(providerBlocks.blockedAt));
+  }
+
+  async blockClient(providerId: string, phone: string, reason?: string): Promise<ProviderBlock> {
+    const normalizedPhone = phone.replace(/\s+/g, "").replace(/-/g, "");
+    
+    // Check if already blocked
+    const [existing] = await db.select().from(providerBlocks).where(
+      and(
+        eq(providerBlocks.providerId, providerId),
+        sql`REPLACE(REPLACE(${providerBlocks.phone}, ' ', ''), '-', '') = ${normalizedPhone}`
+      )
+    );
+    
+    if (existing) {
+      return existing;
+    }
+    
+    const [result] = await db.insert(providerBlocks).values({
+      providerId,
+      phone: normalizedPhone,
+      reason,
+    }).returning();
+    return result;
+  }
+
+  async unblockClient(providerId: string, phone: string): Promise<void> {
+    const normalizedPhone = phone.replace(/\s+/g, "").replace(/-/g, "");
+    await db.delete(providerBlocks).where(
+      and(
+        eq(providerBlocks.providerId, providerId),
+        sql`REPLACE(REPLACE(${providerBlocks.phone}, ' ', ''), '-', '') = ${normalizedPhone}`
+      )
+    );
+  }
+
+  async isBlockedByProvider(providerId: string, phone: string): Promise<boolean> {
+    const normalizedPhone = phone.replace(/\s+/g, "").replace(/-/g, "");
+    const [entry] = await db.select().from(providerBlocks).where(
+      and(
+        eq(providerBlocks.providerId, providerId),
+        sql`REPLACE(REPLACE(${providerBlocks.phone}, ' ', ''), '-', '') = ${normalizedPhone}`
+      )
+    );
+    return !!entry;
+  }
+
+  // No-Show Reports
+  async getNoShowReports(providerId: string): Promise<NoShowReport[]> {
+    return db.select().from(noShowReports)
+      .where(eq(noShowReports.providerId, providerId))
+      .orderBy(desc(noShowReports.reportedAt));
   }
 }
 

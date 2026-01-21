@@ -10,6 +10,7 @@ import {
   LogOut,
   CreditCard,
   Zap,
+  AlertTriangle,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import {
@@ -66,6 +67,11 @@ const whatsappMenuItems = [
 ];
 
 const adminMenuItems = [
+  {
+    title: "Signalements",
+    url: "/signalements",
+    icon: AlertTriangle,
+  },
   {
     title: "Blacklist",
     url: "/blacklist",

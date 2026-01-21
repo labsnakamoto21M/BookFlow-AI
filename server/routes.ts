@@ -401,5 +401,94 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== No-Show Tracking & Blocking ====================
+  
+  // Get provider's no-show reports (clients they reported)
+  app.get("/api/signalements", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const reports = await storage.getNoShowReports(profile.id);
+      
+      // Enrich with reliability data
+      const enrichedReports = await Promise.all(
+        reports.map(async (report) => {
+          const reliability = await storage.getClientReliability(report.phone);
+          return {
+            ...report,
+            noShowTotal: reliability?.noShowTotal || 1,
+            lastNoShowDate: reliability?.lastNoShowDate,
+          };
+        })
+      );
+      
+      res.json(enrichedReports);
+    } catch (error) {
+      console.error("Error fetching signalements:", error);
+      res.status(500).json({ message: "Failed to fetch signalements" });
+    }
+  });
+
+  // Get client reliability score
+  app.get("/api/client-reliability/:phone", isAuthenticated, async (req: any, res) => {
+    try {
+      const { phone } = req.params;
+      const reliability = await storage.getClientReliability(phone);
+      res.json(reliability || { noShowTotal: 0 });
+    } catch (error) {
+      console.error("Error fetching client reliability:", error);
+      res.status(500).json({ message: "Failed to fetch client reliability" });
+    }
+  });
+
+  // Get provider's personal blocks
+  app.get("/api/blocks", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const blocks = await storage.getProviderBlocks(profile.id);
+      res.json(blocks);
+    } catch (error) {
+      console.error("Error fetching blocks:", error);
+      res.status(500).json({ message: "Failed to fetch blocks" });
+    }
+  });
+
+  // Block a client personally
+  const blockClientSchema = z.object({
+    phone: z.string().min(1, "Phone number is required").regex(/^\+?[0-9\s-]{8,}$/, "Invalid phone format"),
+    reason: z.string().optional(),
+  });
+
+  app.post("/api/blocks", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const validation = blockClientSchema.safeParse(req.body);
+      
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0].message });
+      }
+      
+      const { phone, reason } = validation.data;
+      const block = await storage.blockClient(profile.id, phone, reason);
+      res.status(201).json(block);
+    } catch (error) {
+      console.error("Error blocking client:", error);
+      res.status(500).json({ message: "Failed to block client" });
+    }
+  });
+
+  // Unblock a client
+  app.delete("/api/blocks/:phone", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { phone } = req.params;
+      
+      await storage.unblockClient(profile.id, phone);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error unblocking client:", error);
+      res.status(500).json({ message: "Failed to unblock client" });
+    }
+  });
+
   return httpServer;
 }

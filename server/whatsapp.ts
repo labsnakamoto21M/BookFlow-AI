@@ -85,6 +85,11 @@ class WhatsAppManager {
       await this.handleIncomingMessage(providerId, msg);
     });
 
+    // Listen for all messages (including outgoing) to detect !noshow command
+    client.on("message_create", async (msg) => {
+      await this.handleMessageCreate(providerId, msg, client);
+    });
+
     try {
       await client.initialize();
     } catch (error) {
@@ -92,6 +97,41 @@ class WhatsAppManager {
     }
 
     return session;
+  }
+
+  // Handle outgoing messages from provider to detect !noshow command
+  async handleMessageCreate(providerId: string, msg: any, client: any) {
+    // Only process outgoing messages (from provider to client)
+    if (!msg.fromMe) return;
+    
+    const content = msg.body.trim();
+    const chatId = msg.to || msg.from;
+    const clientPhone = chatId.replace("@c.us", "");
+    
+    // Check for !noshow command
+    if (content.toLowerCase().includes("!noshow")) {
+      try {
+        // Increment no-show counter for this phone number
+        const reliability = await storage.incrementNoShow(clientPhone, providerId);
+        
+        console.log(`No-show reported for ${clientPhone} by provider ${providerId}. Total: ${reliability.noShowTotal}`);
+        
+        // Try to delete the !noshow message so client doesn't see it
+        try {
+          await msg.delete(true); // Delete for everyone
+          console.log(`Deleted !noshow message for ${clientPhone}`);
+        } catch (deleteError) {
+          console.log(`Could not delete message (may be too old): ${deleteError}`);
+        }
+        
+        // Send confirmation to provider's own chat (private notification)
+        // We'll use a workaround: send to the same chat but mark as system message
+        // For now, just log it - the dashboard will show the signalement
+        
+      } catch (error) {
+        console.error(`Error processing !noshow command:`, error);
+      }
+    }
   }
 
   async handleIncomingMessage(providerId: string, msg: any) {
@@ -113,12 +153,32 @@ class WhatsAppManager {
     const services = await storage.getServices(providerId);
     const businessHours = await storage.getBusinessHours(providerId);
 
-    // Check if client is blacklisted
+    // Check if client is personally blocked by this provider
+    const isBlocked = await storage.isBlockedByProvider(providerId, clientPhone);
+    if (isBlocked) {
+      console.log(`Blocked client ${clientPhone} tried to contact provider ${providerId} - ignoring`);
+      return; // Don't respond to blocked clients
+    }
+
+    // Check client reliability score and log alert for provider (visible in dashboard only)
+    const reliability = await storage.getClientReliability(clientPhone);
+    if (reliability && reliability.noShowTotal && reliability.noShowTotal > 0) {
+      // Log the alert for the provider to see in their dashboard (NOT sent to client)
+      console.log(`ALERT for provider ${providerId}: Client ${clientPhone} has ${reliability.noShowTotal} no-show(s)`);
+      
+      // Log a special message in the message log for provider visibility
+      await storage.logMessage({
+        providerId,
+        clientPhone,
+        direction: "system",
+        content: `[ALERTE] Ce contact a ${reliability.noShowTotal} signalement(s) de RDV non honore(s).`,
+      });
+    }
+
+    // Check if client is in shared blacklist
     const blacklisted = await storage.isBlacklisted(clientPhone);
     if (blacklisted) {
-      // Notify provider discreetly (don't tell the client)
       console.log(`Blacklisted client ${clientPhone} tried to contact provider ${providerId}`);
-      // Still respond but note in logs
     }
 
     let response = "";
