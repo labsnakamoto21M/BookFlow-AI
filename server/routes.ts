@@ -332,17 +332,7 @@ export async function registerRoutes(
     }
   });
 
-  // Messages
-  app.get("/api/messages", isAuthenticated, async (req: any, res) => {
-    try {
-      const profile = await getOrCreateProviderProfile(req);
-      const messages = await storage.getMessages(profile.id);
-      res.json(messages);
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-      res.status(500).json({ message: "Failed to fetch messages" });
-    }
-  });
+  // GDPR: Messages endpoint removed - no message content is stored
 
   // WhatsApp
   app.get("/api/whatsapp/status", isAuthenticated, async (req: any, res) => {

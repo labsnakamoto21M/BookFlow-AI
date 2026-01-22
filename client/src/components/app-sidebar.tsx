@@ -1,7 +1,6 @@
 import { useLocation, Link } from "wouter";
 import {
   Calendar,
-  MessageSquare,
   Settings,
   LayoutDashboard,
   ShieldBan,
@@ -58,11 +57,6 @@ const whatsappMenuItems = [
     title: "Connexion WhatsApp",
     url: "/whatsapp",
     icon: SiWhatsapp,
-  },
-  {
-    title: "Messages",
-    url: "/messages",
-    icon: MessageSquare,
   },
 ];
 

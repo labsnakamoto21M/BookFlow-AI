@@ -159,13 +159,7 @@ class WhatsAppManager {
     const clientPhone = msg.from.replace("@c.us", "");
     const content = msg.body.toLowerCase().trim();
 
-    // Log the incoming message (only for unknown contacts that passed filters)
-    await storage.logMessage({
-      providerId,
-      clientPhone,
-      direction: "incoming",
-      content: msg.body,
-    });
+    // GDPR: No message content logging - messages are processed ephemerally
 
     // Get provider profile and services
     const profile = await storage.getProviderProfileById(providerId);
@@ -181,19 +175,11 @@ class WhatsAppManager {
       return; // Don't respond to blocked clients
     }
 
-    // Check client reliability score and log alert for provider (visible in dashboard only)
+    // Check client reliability score (alert info available via API, not logged)
     const reliability = await storage.getClientReliability(clientPhone);
     if (reliability && reliability.noShowTotal && reliability.noShowTotal > 0) {
-      // Log the alert for the provider to see in their dashboard (NOT sent to client)
-      console.log(`ALERT for provider ${providerId}: Client ${clientPhone} has ${reliability.noShowTotal} no-show(s)`);
-      
-      // Log a special message in the message log for provider visibility
-      await storage.logMessage({
-        providerId,
-        clientPhone,
-        direction: "system",
-        content: `[ALERTE] Ce contact a ${reliability.noShowTotal} signalement(s) de RDV non honore(s).`,
-      });
+      // GDPR: No message logging - reliability info is available via signalements API
+      console.log(`No-show alert for provider ${providerId}: Client ${clientPhone} has ${reliability.noShowTotal} no-show(s)`);
     }
 
     // Check if client is in shared blacklist
@@ -459,13 +445,7 @@ class WhatsAppManager {
     try {
       const chatId = to.includes("@c.us") ? to : `${to}@c.us`;
       await session.client.sendMessage(chatId, message);
-      
-      await storage.logMessage({
-        providerId,
-        clientPhone: to.replace("@c.us", ""),
-        direction: "outgoing",
-        content: message,
-      });
+      // GDPR: No message content logging - messages are processed ephemerally
     } catch (error) {
       console.error(`Error sending message:`, error);
     }

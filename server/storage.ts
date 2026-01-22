@@ -4,7 +4,6 @@ import {
   appointments, 
   blockedSlots, 
   blacklist, 
-  messageLog,
   providerProfiles,
   clientReliability,
   providerBlocks,
@@ -19,7 +18,6 @@ import {
   type InsertBlockedSlot,
   type BlacklistEntry,
   type InsertBlacklist,
-  type MessageLogEntry,
   type ProviderProfile,
   type InsertProviderProfile,
   type ClientReliability,
@@ -66,9 +64,7 @@ export interface IStorage {
   isBlacklisted(phone: string): Promise<BlacklistEntry | undefined>;
   addToBlacklist(entry: InsertBlacklist): Promise<BlacklistEntry>;
   
-  // Message Log
-  getMessages(providerId: string, limit?: number): Promise<MessageLogEntry[]>;
-  logMessage(message: { providerId: string; clientPhone: string; direction: string; content: string }): Promise<MessageLogEntry>;
+  // GDPR: Message logging removed - no content stored
   
   // Stats
   getDashboardStats(providerId: string): Promise<{
@@ -77,7 +73,6 @@ export interface IStorage {
     completedThisMonth: number;
     noShowsThisMonth: number;
     totalClients: number;
-    messagesThisWeek: number;
   }>;
   
   // Client Reliability (No-Show Tracking)
@@ -268,18 +263,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  // Message Log
-  async getMessages(providerId: string, limit = 100): Promise<MessageLogEntry[]> {
-    return db.select().from(messageLog)
-      .where(eq(messageLog.providerId, providerId))
-      .orderBy(desc(messageLog.createdAt))
-      .limit(limit);
-  }
-
-  async logMessage(message: { providerId: string; clientPhone: string; direction: string; content: string }): Promise<MessageLogEntry> {
-    const [result] = await db.insert(messageLog).values(message).returning();
-    return result;
-  }
+  // GDPR: Message logging functions removed - no content stored
 
   // Stats
   async getDashboardStats(providerId: string) {
@@ -334,13 +318,7 @@ export class DatabaseStorage implements IStorage {
       eq(appointments.providerId, providerId)
     );
 
-    const [messagesResult] = await db.select({ count: count() }).from(messageLog).where(
-      and(
-        eq(messageLog.providerId, providerId),
-        gte(messageLog.createdAt, startOfWeek),
-        lte(messageLog.createdAt, endOfWeek)
-      )
-    );
+    // GDPR: messagesThisWeek removed - no message logging
 
     return {
       todayAppointments: todayResult?.count || 0,
@@ -348,7 +326,6 @@ export class DatabaseStorage implements IStorage {
       completedThisMonth: completedResult?.count || 0,
       noShowsThisMonth: noShowResult?.count || 0,
       totalClients: clientsResult?.length || 0,
-      messagesThisWeek: messagesResult?.count || 0,
     };
   }
 

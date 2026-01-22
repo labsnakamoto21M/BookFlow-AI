@@ -85,15 +85,8 @@ export const blacklist = pgTable("blacklist", {
   index("idx_blacklist_phone").on(table.phone),
 ]);
 
-// WhatsApp message logs
-export const messageLog = pgTable("message_log", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  providerId: varchar("provider_id").notNull(),
-  clientPhone: text("client_phone").notNull(),
-  direction: text("direction").notNull(), // incoming, outgoing
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// GDPR: messageLog table removed - no message content is stored
+// The table still exists in the database but is no longer used
 
 // Client reliability tracking (global no-show counter)
 export const clientReliability = pgTable("client_reliability", {
@@ -228,7 +221,7 @@ export type InsertBlockedSlot = z.infer<typeof insertBlockedSlotSchema>;
 export type BlacklistEntry = typeof blacklist.$inferSelect;
 export type InsertBlacklist = z.infer<typeof insertBlacklistSchema>;
 
-export type MessageLogEntry = typeof messageLog.$inferSelect;
+// GDPR: MessageLogEntry type removed - no message content is stored
 
 export type ClientReliability = typeof clientReliability.$inferSelect;
 export type InsertClientReliability = z.infer<typeof insertClientReliabilitySchema>;

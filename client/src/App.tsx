@@ -15,7 +15,6 @@ import ServicesPage from "@/pages/services";
 import HorairesPage from "@/pages/horaires";
 import AgendaPage from "@/pages/agenda";
 import WhatsAppPage from "@/pages/whatsapp";
-import MessagesPage from "@/pages/messages";
 import BlacklistPage from "@/pages/blacklist";
 import SignalementsPage from "@/pages/signalements";
 import AbonnementPage from "@/pages/abonnement";
@@ -43,7 +42,6 @@ function AuthenticatedRouter() {
               <Route path="/horaires" component={HorairesPage} />
               <Route path="/agenda" component={AgendaPage} />
               <Route path="/whatsapp" component={WhatsAppPage} />
-              <Route path="/messages" component={MessagesPage} />
               <Route path="/blacklist" component={BlacklistPage} />
               <Route path="/signalements" component={SignalementsPage} />
               <Route path="/abonnement" component={AbonnementPage} />
