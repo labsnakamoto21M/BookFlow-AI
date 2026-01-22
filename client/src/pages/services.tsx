@@ -203,7 +203,7 @@ export default function ServicesPage() {
         {hasChanges && (
           <Button
             onClick={saveAllChanges}
-            className="bg-[#39FF14] text-black hover:bg-[#39FF14]/80 font-mono font-bold"
+            className="bg-[#39FF14] text-black font-mono font-bold"
             data-testid="button-save-all"
           >
             <Save className="h-4 w-4 mr-2" />
@@ -316,7 +316,7 @@ export default function ServicesPage() {
             <DialogTrigger asChild>
               <Button
                 size="sm"
-                className="bg-[#39FF14] text-black hover:bg-[#39FF14]/80 font-mono"
+                className="bg-[#39FF14] text-black font-mono"
                 data-testid="button-add-custom"
               >
                 <Plus className="h-4 w-4 mr-1" />
@@ -370,7 +370,7 @@ export default function ServicesPage() {
                   />
                   <Button
                     type="submit"
-                    className="w-full bg-[#39FF14] text-black hover:bg-[#39FF14]/80 font-mono font-bold"
+                    className="w-full bg-[#39FF14] text-black font-mono font-bold"
                     disabled={createCustomExtraMutation.isPending}
                     data-testid="button-submit-custom"
                   >
@@ -403,7 +403,7 @@ export default function ServicesPage() {
                     size="icon"
                     variant="ghost"
                     onClick={() => deleteCustomExtraMutation.mutate(extra.id)}
-                    className="text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                    className="text-red-500"
                     data-testid={`button-delete-custom-${extra.id}`}
                   >
                     <Trash2 className="h-4 w-4" />
