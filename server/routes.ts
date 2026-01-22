@@ -8,7 +8,10 @@ import { z } from "zod";
 import { 
   insertServiceSchema, 
   insertBlockedSlotSchema, 
-  insertBlacklistSchema 
+  insertBlacklistSchema,
+  insertBasePriceSchema,
+  insertServiceExtraSchema,
+  insertCustomExtraSchema
 } from "@shared/schema";
 import { startOfWeek, endOfWeek, parseISO } from "date-fns";
 
@@ -147,6 +150,125 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting service:", error);
       res.status(500).json({ message: "Failed to delete service" });
+    }
+  });
+
+  // Base Prices (duration-based pricing)
+  app.get("/api/base-prices", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const prices = await storage.getBasePrices(profile.id);
+      res.json(prices);
+    } catch (error) {
+      console.error("Error fetching base prices:", error);
+      res.status(500).json({ message: "Failed to fetch base prices" });
+    }
+  });
+
+  app.put("/api/base-prices", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { prices } = req.body;
+      
+      const results = [];
+      for (const price of prices) {
+        const result = await storage.upsertBasePrice({
+          ...price,
+          providerId: profile.id,
+        });
+        results.push(result);
+      }
+      
+      res.json(results);
+    } catch (error) {
+      console.error("Error updating base prices:", error);
+      res.status(500).json({ message: "Failed to update base prices" });
+    }
+  });
+
+  // Service Extras (predefined extras menu)
+  app.get("/api/service-extras", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      // Initialize default extras if none exist
+      await storage.initializeDefaultExtras(profile.id);
+      const extras = await storage.getServiceExtras(profile.id);
+      res.json(extras);
+    } catch (error) {
+      console.error("Error fetching service extras:", error);
+      res.status(500).json({ message: "Failed to fetch service extras" });
+    }
+  });
+
+  app.put("/api/service-extras", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { extras } = req.body;
+      
+      const results = [];
+      for (const extra of extras) {
+        const result = await storage.upsertServiceExtra({
+          ...extra,
+          providerId: profile.id,
+        });
+        results.push(result);
+      }
+      
+      res.json(results);
+    } catch (error) {
+      console.error("Error updating service extras:", error);
+      res.status(500).json({ message: "Failed to update service extras" });
+    }
+  });
+
+  // Custom Extras (user-defined)
+  app.get("/api/custom-extras", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const extras = await storage.getCustomExtras(profile.id);
+      res.json(extras);
+    } catch (error) {
+      console.error("Error fetching custom extras:", error);
+      res.status(500).json({ message: "Failed to fetch custom extras" });
+    }
+  });
+
+  app.post("/api/custom-extras", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const extra = await storage.createCustomExtra({
+        ...req.body,
+        providerId: profile.id,
+      });
+      res.status(201).json(extra);
+    } catch (error) {
+      console.error("Error creating custom extra:", error);
+      res.status(500).json({ message: "Failed to create custom extra" });
+    }
+  });
+
+  app.patch("/api/custom-extras/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const updated = await storage.updateCustomExtra(id, req.body);
+      if (!updated) {
+        return res.status(404).json({ message: "Custom extra not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating custom extra:", error);
+      res.status(500).json({ message: "Failed to update custom extra" });
+    }
+  });
+
+  app.delete("/api/custom-extras/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteCustomExtra(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting custom extra:", error);
+      res.status(500).json({ message: "Failed to delete custom extra" });
     }
   });
 
