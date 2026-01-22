@@ -103,9 +103,12 @@ class WhatsAppManager {
   async handleMessageCreate(providerId: string, msg: any, client: any) {
     // Only process outgoing messages (from provider to client)
     if (!msg.fromMe) return;
+
+    // Ignore group messages for !noshow command too
+    const chatId = msg.to || msg.from;
+    if (chatId.endsWith("@g.us")) return;
     
     const content = msg.body.trim();
-    const chatId = msg.to || msg.from;
     const clientPhone = chatId.replace("@c.us", "");
     
     // Check for !noshow command
@@ -135,10 +138,28 @@ class WhatsAppManager {
   }
 
   async handleIncomingMessage(providerId: string, msg: any) {
+    // FILTER 1: Ignore all group messages (group chats end with @g.us)
+    if (msg.from.endsWith("@g.us")) {
+      console.log(`Ignoring group message for provider ${providerId}`);
+      return;
+    }
+
+    // FILTER 2: Check if sender is a known contact - if so, stay silent
+    try {
+      const contact = await msg.getContact();
+      if (contact && contact.isMyContact) {
+        console.log(`Known contact ${contact.pushname || contact.number} messaged provider ${providerId} - staying silent`);
+        return;
+      }
+    } catch (error) {
+      console.error(`Error checking contact status:`, error);
+      // Continue processing if we can't determine contact status
+    }
+
     const clientPhone = msg.from.replace("@c.us", "");
     const content = msg.body.toLowerCase().trim();
 
-    // Log the incoming message
+    // Log the incoming message (only for unknown contacts that passed filters)
     await storage.logMessage({
       providerId,
       clientPhone,
