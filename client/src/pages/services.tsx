@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -6,8 +6,6 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -27,350 +25,408 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Plus, Pencil, Trash2, Clock, Euro, Briefcase } from "lucide-react";
-import type { Service } from "@shared/schema";
+import { Plus, Trash2, Clock, Euro, Save, Terminal } from "lucide-react";
+import type { BasePrice, ServiceExtra, CustomExtra } from "@shared/schema";
 
-const serviceFormSchema = z.object({
-  name: z.string().min(1, "Le nom est requis"),
-  description: z.string().optional(),
-  price: z.number().min(0, "Le prix doit être positif"),
-  duration: z.number().min(5, "La durée minimum est de 5 minutes"),
-  active: z.boolean().default(true),
+const DURATION_TIERS = [
+  { duration: 15, label: "15 min" },
+  { duration: 30, label: "30 min" },
+  { duration: 45, label: "45 min" },
+  { duration: 60, label: "1h" },
+  { duration: 90, label: "1h30" },
+  { duration: 120, label: "2h" },
+];
+
+const customExtraSchema = z.object({
+  name: z.string().min(1, "Name required"),
+  price: z.number().min(0, "Price must be positive"),
 });
 
-type ServiceFormValues = z.infer<typeof serviceFormSchema>;
+type CustomExtraFormValues = z.infer<typeof customExtraSchema>;
 
 export default function ServicesPage() {
   const { toast } = useToast();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [isCustomExtraDialogOpen, setIsCustomExtraDialogOpen] = useState(false);
+  const [basePricesState, setBasePricesState] = useState<Record<number, { pricePrivate: number; priceEscort: number; active: boolean }>>({});
+  const [extrasState, setExtrasState] = useState<Record<string, { active: boolean; price: number }>>({});
+  const [hasChanges, setHasChanges] = useState(false);
 
-  const { data: services, isLoading } = useQuery<Service[]>({
-    queryKey: ["/api/services"],
+  const { data: basePrices, isLoading: loadingPrices } = useQuery<BasePrice[]>({
+    queryKey: ["/api/base-prices"],
   });
 
-  const form = useForm<ServiceFormValues>({
-    resolver: zodResolver(serviceFormSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      price: 0,
-      duration: 30,
-      active: true,
-    },
+  const { data: serviceExtras, isLoading: loadingExtras } = useQuery<ServiceExtra[]>({
+    queryKey: ["/api/service-extras"],
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: ServiceFormValues) =>
-      apiRequest("POST", "/api/services", { ...data, price: Math.round(data.price * 100) }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/services"] });
-      toast({ title: "Succès", description: "Service créé avec succès" });
-      setIsDialogOpen(false);
-      form.reset();
-    },
-    onError: () => {
-      toast({ title: "Erreur", description: "Impossible de créer le service", variant: "destructive" });
-    },
+  const { data: customExtras, isLoading: loadingCustom } = useQuery<CustomExtra[]>({
+    queryKey: ["/api/custom-extras"],
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: ServiceFormValues }) =>
-      apiRequest("PATCH", `/api/services/${id}`, { ...data, price: Math.round(data.price * 100) }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/services"] });
-      toast({ title: "Succès", description: "Service mis à jour" });
-      setIsDialogOpen(false);
-      setEditingService(null);
-      form.reset();
-    },
-    onError: () => {
-      toast({ title: "Erreur", description: "Impossible de mettre à jour le service", variant: "destructive" });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/services/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/services"] });
-      toast({ title: "Succès", description: "Service supprimé" });
-    },
-    onError: () => {
-      toast({ title: "Erreur", description: "Impossible de supprimer le service", variant: "destructive" });
-    },
-  });
-
-  const onSubmit = (data: ServiceFormValues) => {
-    if (editingService) {
-      updateMutation.mutate({ id: editingService.id, data });
-    } else {
-      createMutation.mutate(data);
+  useEffect(() => {
+    if (basePrices) {
+      const state: Record<number, { pricePrivate: number; priceEscort: number; active: boolean }> = {};
+      DURATION_TIERS.forEach((tier) => {
+        const existing = basePrices.find((p) => p.duration === tier.duration);
+        state[tier.duration] = {
+          pricePrivate: existing?.pricePrivate ? existing.pricePrivate / 100 : 0,
+          priceEscort: existing?.priceEscort ? existing.priceEscort / 100 : 0,
+          active: existing?.active ?? false,
+        };
+      });
+      setBasePricesState(state);
     }
+  }, [basePrices]);
+
+  useEffect(() => {
+    if (serviceExtras) {
+      const state: Record<string, { active: boolean; price: number }> = {};
+      serviceExtras.forEach((extra) => {
+        state[extra.extraType] = {
+          active: extra.active ?? false,
+          price: extra.price ? extra.price / 100 : 0,
+        };
+      });
+      setExtrasState(state);
+    }
+  }, [serviceExtras]);
+
+  const saveBasePricesMutation = useMutation({
+    mutationFn: (prices: any[]) => apiRequest("PUT", "/api/base-prices", { prices }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/base-prices"] });
+      toast({ title: "Saved", description: "Base prices updated" });
+      setHasChanges(false);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save prices", variant: "destructive" });
+    },
+  });
+
+  const saveExtrasMutation = useMutation({
+    mutationFn: (extras: any[]) => apiRequest("PUT", "/api/service-extras", { extras }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/service-extras"] });
+      toast({ title: "Saved", description: "Extras updated" });
+      setHasChanges(false);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save extras", variant: "destructive" });
+    },
+  });
+
+  const createCustomExtraMutation = useMutation({
+    mutationFn: (data: CustomExtraFormValues) =>
+      apiRequest("POST", "/api/custom-extras", { ...data, price: Math.round(data.price * 100) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/custom-extras"] });
+      toast({ title: "Created", description: "Custom extra added" });
+      setIsCustomExtraDialogOpen(false);
+      customExtraForm.reset();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create extra", variant: "destructive" });
+    },
+  });
+
+  const deleteCustomExtraMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/custom-extras/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/custom-extras"] });
+      toast({ title: "Deleted", description: "Custom extra removed" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete extra", variant: "destructive" });
+    },
+  });
+
+  const customExtraForm = useForm<CustomExtraFormValues>({
+    resolver: zodResolver(customExtraSchema),
+    defaultValues: { name: "", price: 0 },
+  });
+
+  const handleBasePriceChange = (duration: number, field: string, value: number | boolean) => {
+    setBasePricesState((prev) => ({
+      ...prev,
+      [duration]: { ...prev[duration], [field]: value },
+    }));
+    setHasChanges(true);
   };
 
-  const openEditDialog = (service: Service) => {
-    setEditingService(service);
-    form.reset({
-      name: service.name,
-      description: service.description || "",
-      price: service.price / 100,
-      duration: service.duration,
-      active: service.active ?? true,
-    });
-    setIsDialogOpen(true);
+  const handleExtraChange = (extraType: string, field: string, value: number | boolean) => {
+    setExtrasState((prev) => ({
+      ...prev,
+      [extraType]: { ...prev[extraType], [field]: value },
+    }));
+    setHasChanges(true);
   };
 
-  const openCreateDialog = () => {
-    setEditingService(null);
-    form.reset({
-      name: "",
-      description: "",
-      price: 0,
-      duration: 30,
-      active: true,
-    });
-    setIsDialogOpen(true);
+  const saveAllChanges = () => {
+    const prices = Object.entries(basePricesState).map(([duration, data]) => ({
+      duration: parseInt(duration),
+      pricePrivate: Math.round(data.pricePrivate * 100),
+      priceEscort: Math.round(data.priceEscort * 100),
+      active: data.active,
+    }));
+    saveBasePricesMutation.mutate(prices);
+
+    const extras = Object.entries(extrasState).map(([extraType, data]) => ({
+      extraType,
+      active: data.active,
+      price: Math.round(data.price * 100),
+    }));
+    saveExtrasMutation.mutate(extras);
   };
 
-  const formatPrice = (cents: number) => {
-    return (cents / 100).toFixed(2).replace(".", ",") + " €";
-  };
+  if (loadingPrices || loadingExtras || loadingCustom) {
+    return (
+      <div className="p-6 space-y-6 bg-black min-h-screen">
+        <Skeleton className="h-8 w-48 bg-[#39FF14]/20" />
+        <div className="grid gap-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 bg-[#39FF14]/10" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-services-title">Services</h1>
-          <p className="text-muted-foreground">
-            Gérez les services que vous proposez à vos clients
-          </p>
+    <div className="p-6 space-y-8 bg-black min-h-screen font-mono">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Terminal className="h-8 w-8 text-[#39FF14]" />
+          <h1 className="text-3xl font-bold text-[#39FF14] tracking-wider">
+            SERVICES_CONFIG
+          </h1>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={openCreateDialog} data-testid="button-add-service">
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter un service
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {editingService ? "Modifier le service" : "Nouveau service"}
-              </DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nom du service</FormLabel>
-                      <FormControl>
-                        <Input 
-                          placeholder="ex: Coupe homme" 
-                          {...field} 
-                          data-testid="input-service-name"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+        {hasChanges && (
+          <Button
+            onClick={saveAllChanges}
+            className="bg-[#39FF14] text-black hover:bg-[#39FF14]/80 font-mono font-bold"
+            data-testid="button-save-all"
+          >
+            <Save className="h-4 w-4 mr-2" />
+            SAVE_ALL
+          </Button>
+        )}
+      </div>
+
+      <Card className="bg-black border-2 border-[#39FF14] rounded-sm">
+        <CardHeader className="border-b border-[#39FF14]/30">
+          <CardTitle className="text-[#39FF14] font-mono flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            &gt; BASE_PRICES [DURATION]
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="grid gap-3">
+            <div className="grid grid-cols-4 gap-4 text-[#39FF14]/60 text-sm font-mono border-b border-[#39FF14]/20 pb-2">
+              <span>DURATION</span>
+              <span>PRIVATE (EUR)</span>
+              <span>ESCORT (EUR)</span>
+              <span>ACTIVE</span>
+            </div>
+            {DURATION_TIERS.map((tier) => (
+              <div
+                key={tier.duration}
+                className="grid grid-cols-4 gap-4 items-center py-2 border-b border-[#39FF14]/10"
+                data-testid={`row-duration-${tier.duration}`}
+              >
+                <span className="text-[#39FF14] font-bold">{tier.label}</span>
+                <Input
+                  type="number"
+                  value={basePricesState[tier.duration]?.pricePrivate || 0}
+                  onChange={(e) =>
+                    handleBasePriceChange(tier.duration, "pricePrivate", parseFloat(e.target.value) || 0)
+                  }
+                  className="bg-black border-[#39FF14]/50 text-[#39FF14] font-mono focus:border-[#39FF14]"
+                  data-testid={`input-private-${tier.duration}`}
                 />
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description (optionnel)</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="Décrivez ce service..." 
-                          {...field} 
-                          data-testid="input-service-description"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                <Input
+                  type="number"
+                  value={basePricesState[tier.duration]?.priceEscort || 0}
+                  onChange={(e) =>
+                    handleBasePriceChange(tier.duration, "priceEscort", parseFloat(e.target.value) || 0)
+                  }
+                  className="bg-black border-[#39FF14]/50 text-[#39FF14] font-mono focus:border-[#39FF14]"
+                  data-testid={`input-escort-${tier.duration}`}
                 />
-                <div className="grid grid-cols-2 gap-4">
+                <Switch
+                  checked={basePricesState[tier.duration]?.active || false}
+                  onCheckedChange={(checked) => handleBasePriceChange(tier.duration, "active", checked)}
+                  className="data-[state=checked]:bg-[#39FF14]"
+                  data-testid={`switch-active-${tier.duration}`}
+                />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-black border-2 border-[#39FF14] rounded-sm">
+        <CardHeader className="border-b border-[#39FF14]/30">
+          <CardTitle className="text-[#39FF14] font-mono flex items-center gap-2">
+            <Euro className="h-5 w-5" />
+            &gt; EXTRAS_MENU [PREDEFINED]
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="grid gap-3">
+            <div className="grid grid-cols-3 gap-4 text-[#39FF14]/60 text-sm font-mono border-b border-[#39FF14]/20 pb-2">
+              <span>SERVICE</span>
+              <span>SUPPLEMENT (EUR)</span>
+              <span>ACTIVE</span>
+            </div>
+            {serviceExtras?.map((extra) => (
+              <div
+                key={extra.id}
+                className="grid grid-cols-3 gap-4 items-center py-2 border-b border-[#39FF14]/10"
+                data-testid={`row-extra-${extra.extraType.replace(/\s+/g, '-').toLowerCase()}`}
+              >
+                <span className="text-[#39FF14]">{extra.extraType}</span>
+                <Input
+                  type="number"
+                  value={extrasState[extra.extraType]?.price || 0}
+                  onChange={(e) =>
+                    handleExtraChange(extra.extraType, "price", parseFloat(e.target.value) || 0)
+                  }
+                  className="bg-black border-[#39FF14]/50 text-[#39FF14] font-mono focus:border-[#39FF14]"
+                  data-testid={`input-extra-price-${extra.extraType.replace(/\s+/g, '-').toLowerCase()}`}
+                />
+                <Switch
+                  checked={extrasState[extra.extraType]?.active || false}
+                  onCheckedChange={(checked) => handleExtraChange(extra.extraType, "active", checked)}
+                  className="data-[state=checked]:bg-[#39FF14]"
+                  data-testid={`switch-extra-${extra.extraType.replace(/\s+/g, '-').toLowerCase()}`}
+                />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-black border-2 border-[#39FF14] rounded-sm">
+        <CardHeader className="border-b border-[#39FF14]/30 flex flex-row items-center justify-between gap-4">
+          <CardTitle className="text-[#39FF14] font-mono flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            &gt; CUSTOM_EXTRAS [USER_DEFINED]
+          </CardTitle>
+          <Dialog open={isCustomExtraDialogOpen} onOpenChange={setIsCustomExtraDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                size="sm"
+                className="bg-[#39FF14] text-black hover:bg-[#39FF14]/80 font-mono"
+                data-testid="button-add-custom"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                ADD_NEW
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-black border-2 border-[#39FF14] rounded-sm">
+              <DialogHeader>
+                <DialogTitle className="text-[#39FF14] font-mono">&gt; NEW_CUSTOM_EXTRA</DialogTitle>
+              </DialogHeader>
+              <Form {...customExtraForm}>
+                <form
+                  onSubmit={customExtraForm.handleSubmit((data) => createCustomExtraMutation.mutate(data))}
+                  className="space-y-4"
+                >
                   <FormField
-                    control={form.control}
+                    control={customExtraForm.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-[#39FF14]/80 font-mono">NAME</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            className="bg-black border-[#39FF14]/50 text-[#39FF14] font-mono"
+                            data-testid="input-custom-name"
+                          />
+                        </FormControl>
+                        <FormMessage className="text-red-500" />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={customExtraForm.control}
                     name="price"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Prix (€)</FormLabel>
+                        <FormLabel className="text-[#39FF14]/80 font-mono">PRICE (EUR)</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
-                            step="0.01"
-                            min="0"
                             {...field}
                             onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                            data-testid="input-service-price"
+                            className="bg-black border-[#39FF14]/50 text-[#39FF14] font-mono"
+                            data-testid="input-custom-price"
                           />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage className="text-red-500" />
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="duration"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Durée (min)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min="5"
-                            step="5"
-                            {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value) || 30)}
-                            data-testid="input-service-duration"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="active"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                      <div className="space-y-0.5">
-                        <FormLabel>Service actif</FormLabel>
-                        <p className="text-sm text-muted-foreground">
-                          Les services inactifs ne sont pas proposés aux clients
-                        </p>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          data-testid="switch-service-active"
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                <div className="flex justify-end gap-2 pt-4">
                   <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                    data-testid="button-cancel"
+                    type="submit"
+                    className="w-full bg-[#39FF14] text-black hover:bg-[#39FF14]/80 font-mono font-bold"
+                    disabled={createCustomExtraMutation.isPending}
+                    data-testid="button-submit-custom"
                   >
-                    Annuler
+                    {createCustomExtraMutation.isPending ? "SAVING..." : "CREATE_EXTRA"}
                   </Button>
-                  <Button 
-                    type="submit" 
-                    disabled={createMutation.isPending || updateMutation.isPending}
-                    data-testid="button-save-service"
-                  >
-                    {createMutation.isPending || updateMutation.isPending ? "Enregistrement..." : "Enregistrer"}
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Services Grid */}
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-6 space-y-4">
-                <Skeleton className="h-6 w-3/4" />
-                <Skeleton className="h-4 w-full" />
-                <div className="flex gap-4">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-4 w-20" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : services && services.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {services.map((service) => (
-            <Card 
-              key={service.id} 
-              className={!service.active ? "opacity-60" : ""}
-              data-testid={`card-service-${service.id}`}
-            >
-              <CardHeader className="flex flex-row items-start justify-between gap-4 pb-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <CardTitle className="text-lg truncate">{service.name}</CardTitle>
-                    {!service.active && (
-                      <Badge variant="secondary" className="text-xs">Inactif</Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-1 flex-shrink-0">
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent className="p-4">
+          {customExtras && customExtras.length > 0 ? (
+            <div className="grid gap-3">
+              <div className="grid grid-cols-3 gap-4 text-[#39FF14]/60 text-sm font-mono border-b border-[#39FF14]/20 pb-2">
+                <span>NAME</span>
+                <span>PRICE (EUR)</span>
+                <span>ACTION</span>
+              </div>
+              {customExtras.map((extra) => (
+                <div
+                  key={extra.id}
+                  className="grid grid-cols-3 gap-4 items-center py-2 border-b border-[#39FF14]/10"
+                  data-testid={`row-custom-${extra.id}`}
+                >
+                  <span className="text-[#39FF14]">{extra.name}</span>
+                  <span className="text-[#39FF14] font-mono">
+                    {extra.price ? (extra.price / 100).toFixed(0) : 0} EUR
+                  </span>
                   <Button
-                    variant="ghost"
                     size="icon"
-                    onClick={() => openEditDialog(service)}
-                    data-testid={`button-edit-${service.id}`}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
                     variant="ghost"
-                    size="icon"
-                    onClick={() => deleteMutation.mutate(service.id)}
-                    className="text-destructive hover:text-destructive"
-                    data-testid={`button-delete-${service.id}`}
+                    onClick={() => deleteCustomExtraMutation.mutate(extra.id)}
+                    className="text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                    data-testid={`button-delete-custom-${extra.id}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {service.description && (
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {service.description}
-                  </p>
-                )}
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-1.5 text-sm">
-                    <Euro className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{formatPrice(service.price)}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>{service.duration} min</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-              <Briefcase className="h-8 w-8 text-muted-foreground" />
+              ))}
             </div>
-            <h3 className="text-lg font-medium mb-2">Aucun service</h3>
-            <p className="text-muted-foreground text-center max-w-sm mb-6">
-              Ajoutez vos services pour que le bot puisse les proposer à vos clients.
-            </p>
-            <Button onClick={openCreateDialog} data-testid="button-add-first-service">
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter mon premier service
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <div className="text-center py-8 text-[#39FF14]/40 font-mono">
+              <p>&gt; NO_CUSTOM_EXTRAS_DEFINED</p>
+              <p className="text-sm mt-2">&gt; Click ADD_NEW to create</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="border border-[#39FF14]/30 rounded-sm p-4 bg-[#39FF14]/5">
+        <p className="text-[#39FF14]/60 font-mono text-sm">
+          <span className="text-[#39FF14]">[INFO]</span> The WhatsApp bot will ask clients to choose between
+          PRIVATE or ESCORT pricing, then offer available EXTRAS for additional charges.
+          Total = Base Price + Selected Extras.
+        </p>
+      </div>
     </div>
   );
 }
