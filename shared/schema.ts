@@ -23,7 +23,7 @@ export const providerProfiles = pgTable("provider_profiles", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Services offered by providers
+// Legacy services table (kept for compatibility)
 export const services = pgTable("services", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
@@ -34,6 +34,41 @@ export const services = pgTable("services", {
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Base prices by duration (Prive vs Escort)
+export const basePrices = pgTable("base_prices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").notNull(),
+  duration: integer("duration").notNull(), // in minutes: 15, 30, 45, 60, 90, 120
+  pricePrivate: integer("price_private").default(0), // in cents
+  priceEscort: integer("price_escort").default(0), // in cents
+  active: boolean("active").default(true),
+}, (table) => [
+  index("idx_base_prices_provider").on(table.providerId),
+]);
+
+// Predefined extras (fixed list)
+export const serviceExtras = pgTable("service_extras", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").notNull(),
+  extraType: text("extra_type").notNull(), // predefined type name
+  active: boolean("active").default(false),
+  price: integer("price").default(0), // supplement price in cents
+}, (table) => [
+  index("idx_service_extras_provider").on(table.providerId),
+]);
+
+// Custom extras (user-defined)
+export const customExtras = pgTable("custom_extras", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").notNull(),
+  name: text("name").notNull(),
+  price: integer("price").default(0), // in cents
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_custom_extras_provider").on(table.providerId),
+]);
 
 // Business hours for providers
 export const businessHours = pgTable("business_hours", {
@@ -167,6 +202,19 @@ export const insertServiceSchema = createInsertSchema(services).omit({
   createdAt: true,
 });
 
+export const insertBasePriceSchema = createInsertSchema(basePrices).omit({
+  id: true,
+});
+
+export const insertServiceExtraSchema = createInsertSchema(serviceExtras).omit({
+  id: true,
+});
+
+export const insertCustomExtraSchema = createInsertSchema(customExtras).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertBusinessHoursSchema = createInsertSchema(businessHours).omit({
   id: true,
 });
@@ -208,6 +256,15 @@ export type InsertProviderProfile = z.infer<typeof insertProviderProfileSchema>;
 
 export type Service = typeof services.$inferSelect;
 export type InsertService = z.infer<typeof insertServiceSchema>;
+
+export type BasePrice = typeof basePrices.$inferSelect;
+export type InsertBasePrice = z.infer<typeof insertBasePriceSchema>;
+
+export type ServiceExtra = typeof serviceExtras.$inferSelect;
+export type InsertServiceExtra = z.infer<typeof insertServiceExtraSchema>;
+
+export type CustomExtra = typeof customExtras.$inferSelect;
+export type InsertCustomExtra = z.infer<typeof insertCustomExtraSchema>;
 
 export type BusinessHours = typeof businessHours.$inferSelect;
 export type InsertBusinessHours = z.infer<typeof insertBusinessHoursSchema>;
