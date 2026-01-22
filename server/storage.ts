@@ -8,6 +8,9 @@ import {
   clientReliability,
   providerBlocks,
   noShowReports,
+  basePrices,
+  serviceExtras,
+  customExtras,
   type Service, 
   type InsertService,
   type BusinessHours,
@@ -23,6 +26,12 @@ import {
   type ClientReliability,
   type ProviderBlock,
   type NoShowReport,
+  type BasePrice,
+  type InsertBasePrice,
+  type ServiceExtra,
+  type InsertServiceExtra,
+  type CustomExtra,
+  type InsertCustomExtra,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql, desc, count } from "drizzle-orm";
@@ -87,6 +96,23 @@ export interface IStorage {
   
   // No-Show Reports
   getNoShowReports(providerId: string): Promise<NoShowReport[]>;
+  
+  // Base Prices (duration-based pricing)
+  getBasePrices(providerId: string): Promise<BasePrice[]>;
+  upsertBasePrice(price: InsertBasePrice): Promise<BasePrice>;
+  updateBasePrice(id: string, updates: Partial<InsertBasePrice>): Promise<BasePrice | undefined>;
+  
+  // Service Extras (predefined extras)
+  getServiceExtras(providerId: string): Promise<ServiceExtra[]>;
+  upsertServiceExtra(extra: InsertServiceExtra): Promise<ServiceExtra>;
+  updateServiceExtra(id: string, updates: Partial<InsertServiceExtra>): Promise<ServiceExtra | undefined>;
+  initializeDefaultExtras(providerId: string): Promise<void>;
+  
+  // Custom Extras (user-defined)
+  getCustomExtras(providerId: string): Promise<CustomExtra[]>;
+  createCustomExtra(extra: InsertCustomExtra): Promise<CustomExtra>;
+  updateCustomExtra(id: string, updates: Partial<InsertCustomExtra>): Promise<CustomExtra | undefined>;
+  deleteCustomExtra(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -425,6 +451,133 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(noShowReports)
       .where(eq(noShowReports.providerId, providerId))
       .orderBy(desc(noShowReports.reportedAt));
+  }
+  
+  // Base Prices
+  async getBasePrices(providerId: string): Promise<BasePrice[]> {
+    return db.select().from(basePrices)
+      .where(eq(basePrices.providerId, providerId))
+      .orderBy(basePrices.duration);
+  }
+  
+  async upsertBasePrice(price: InsertBasePrice): Promise<BasePrice> {
+    // Check if exists
+    const [existing] = await db.select().from(basePrices).where(
+      and(
+        eq(basePrices.providerId, price.providerId),
+        eq(basePrices.duration, price.duration)
+      )
+    );
+    
+    if (existing) {
+      const [result] = await db.update(basePrices)
+        .set(price)
+        .where(eq(basePrices.id, existing.id))
+        .returning();
+      return result;
+    }
+    
+    const [result] = await db.insert(basePrices).values(price).returning();
+    return result;
+  }
+  
+  async updateBasePrice(id: string, updates: Partial<InsertBasePrice>): Promise<BasePrice | undefined> {
+    const [result] = await db.update(basePrices)
+      .set(updates)
+      .where(eq(basePrices.id, id))
+      .returning();
+    return result;
+  }
+  
+  // Service Extras (predefined)
+  async getServiceExtras(providerId: string): Promise<ServiceExtra[]> {
+    return db.select().from(serviceExtras)
+      .where(eq(serviceExtras.providerId, providerId));
+  }
+  
+  async upsertServiceExtra(extra: InsertServiceExtra): Promise<ServiceExtra> {
+    const [existing] = await db.select().from(serviceExtras).where(
+      and(
+        eq(serviceExtras.providerId, extra.providerId),
+        eq(serviceExtras.extraType, extra.extraType)
+      )
+    );
+    
+    if (existing) {
+      const [result] = await db.update(serviceExtras)
+        .set(extra)
+        .where(eq(serviceExtras.id, existing.id))
+        .returning();
+      return result;
+    }
+    
+    const [result] = await db.insert(serviceExtras).values(extra).returning();
+    return result;
+  }
+  
+  async updateServiceExtra(id: string, updates: Partial<InsertServiceExtra>): Promise<ServiceExtra | undefined> {
+    const [result] = await db.update(serviceExtras)
+      .set(updates)
+      .where(eq(serviceExtras.id, id))
+      .returning();
+    return result;
+  }
+  
+  async initializeDefaultExtras(providerId: string): Promise<void> {
+    const defaultExtras = [
+      "Anal",
+      "Fellatio without condom",
+      "Sex without condom",
+      "Anilingus (giving)",
+      "Swallow sperm",
+      "Ejaculate on face",
+      "Goldenshower on you",
+      "Goldenshower on me",
+      "Prostate massage",
+      "French Kiss"
+    ];
+    
+    for (const extraType of defaultExtras) {
+      const [existing] = await db.select().from(serviceExtras).where(
+        and(
+          eq(serviceExtras.providerId, providerId),
+          eq(serviceExtras.extraType, extraType)
+        )
+      );
+      
+      if (!existing) {
+        await db.insert(serviceExtras).values({
+          providerId,
+          extraType,
+          active: false,
+          price: 0,
+        });
+      }
+    }
+  }
+  
+  // Custom Extras
+  async getCustomExtras(providerId: string): Promise<CustomExtra[]> {
+    return db.select().from(customExtras)
+      .where(eq(customExtras.providerId, providerId))
+      .orderBy(desc(customExtras.createdAt));
+  }
+  
+  async createCustomExtra(extra: InsertCustomExtra): Promise<CustomExtra> {
+    const [result] = await db.insert(customExtras).values(extra).returning();
+    return result;
+  }
+  
+  async updateCustomExtra(id: string, updates: Partial<InsertCustomExtra>): Promise<CustomExtra | undefined> {
+    const [result] = await db.update(customExtras)
+      .set(updates)
+      .where(eq(customExtras.id, id))
+      .returning();
+    return result;
+  }
+  
+  async deleteCustomExtra(id: string): Promise<void> {
+    await db.delete(customExtras).where(eq(customExtras.id, id));
   }
 }
 
