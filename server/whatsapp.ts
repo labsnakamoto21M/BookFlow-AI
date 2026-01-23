@@ -144,42 +144,10 @@ class WhatsAppManager {
     return session;
   }
 
-  // Handle outgoing messages from provider to detect !noshow command
+  // Handle outgoing messages - !noshow command removed (handled via Agenda UI instead)
   async handleMessageCreate(providerId: string, msg: any, client: any) {
-    // Only process outgoing messages (from provider to client)
-    if (!msg.fromMe) return;
-
-    // Ignore group messages for !noshow command too
-    const chatId = msg.to || msg.from;
-    if (chatId.endsWith("@g.us")) return;
-    
-    const content = msg.body.trim();
-    const clientPhone = chatId.replace("@c.us", "");
-    
-    // Check for !noshow command
-    if (content.toLowerCase().includes("!noshow")) {
-      try {
-        // Increment no-show counter for this phone number
-        const reliability = await storage.incrementNoShow(clientPhone, providerId);
-        
-        console.log(`No-show reported for ${clientPhone} by provider ${providerId}. Total: ${reliability.noShowTotal}`);
-        
-        // Try to delete the !noshow message so client doesn't see it
-        try {
-          await msg.delete(true); // Delete for everyone
-          console.log(`Deleted !noshow message for ${clientPhone}`);
-        } catch (deleteError) {
-          console.log(`Could not delete message (may be too old): ${deleteError}`);
-        }
-        
-        // Send confirmation to provider's own chat (private notification)
-        // We'll use a workaround: send to the same chat but mark as system message
-        // For now, just log it - the dashboard will show the signalement
-        
-      } catch (error) {
-        console.error(`Error processing !noshow command:`, error);
-      }
-    }
+    // No command processing from provider messages anymore
+    // No-show is now handled via the Agenda interface
   }
 
   async handleIncomingMessage(providerId: string, msg: any) {
@@ -189,7 +157,26 @@ class WhatsAppManager {
       return;
     }
 
-    // FILTER 2: Check if sender is a known contact - if so, stay silent
+    const clientPhone = msg.from.replace("@c.us", "");
+
+    // Get provider profile first to check availability mode
+    const profile = await storage.getProviderProfileById(providerId);
+    if (!profile) return;
+
+    // FILTER 2: Check availability mode - GHOST mode = total silence
+    if (profile.availabilityMode === "ghost") {
+      console.log(`Provider ${providerId} in GHOST mode - ignoring message from ${clientPhone}`);
+      return;
+    }
+
+    // FILTER 3: Check if sender is a dangerous client (2+ safety reports) - silent ignore
+    const isDangerous = await storage.isDangerousClient(clientPhone);
+    if (isDangerous) {
+      console.log(`Dangerous client ${clientPhone} filtered for provider ${providerId}`);
+      return; // Silent ignore for dangerous clients
+    }
+
+    // FILTER 4: Check if sender is a known contact - if so, stay silent
     try {
       const contact = await msg.getContact();
       if (contact && contact.isMyContact) {
@@ -198,17 +185,11 @@ class WhatsAppManager {
       }
     } catch (error) {
       console.error(`Error checking contact status:`, error);
-      // Continue processing if we can't determine contact status
     }
 
-    const clientPhone = msg.from.replace("@c.us", "");
     const content = msg.body.toLowerCase().trim();
 
     // GDPR: No message content logging - messages are processed ephemerally
-
-    // Get provider profile and services
-    const profile = await storage.getProviderProfileById(providerId);
-    if (!profile) return;
 
     const services = await storage.getServices(providerId);
     const businessHours = await storage.getBusinessHours(providerId);
@@ -217,14 +198,15 @@ class WhatsAppManager {
     const isBlocked = await storage.isBlockedByProvider(providerId, clientPhone);
     if (isBlocked) {
       console.log(`Blocked client ${clientPhone} tried to contact provider ${providerId} - ignoring`);
-      return; // Don't respond to blocked clients
+      return;
     }
 
-    // Check client reliability score (alert info available via API, not logged)
+    // Check client reliability score - if 2+ no-shows, refuse booking
     const reliability = await storage.getClientReliability(clientPhone);
-    if (reliability && reliability.noShowTotal && reliability.noShowTotal > 0) {
-      // GDPR: No message logging - reliability info is available via signalements API
-      console.log(`No-show alert for provider ${providerId}: Client ${clientPhone} has ${reliability.noShowTotal} no-show(s)`);
+    if (reliability && reliability.noShowTotal && reliability.noShowTotal >= 2) {
+      console.log(`Client ${clientPhone} has ${reliability.noShowTotal} no-shows - refusing booking`);
+      await this.sendMessage(providerId, clientPhone, "desole, je ne peux plus te donner de rdv. tu as rate trop de rdv sans prevenir.");
+      return;
     }
 
     // Check if client is in shared blacklist
@@ -317,8 +299,31 @@ class WhatsAppManager {
     return durationKeywords.some(k => content.includes(k));
   }
 
+  // Censure anti-ban: remplace les termes sensibles
+  private censorText(text: string): string {
+    const replacements: Record<string, string> = {
+      "Anal": "An4l",
+      "anal": "an4l",
+      "Sans capote": "S@ns capote",
+      "sans capote": "s@ns capote",
+      "Sex without condom": "S@ns capote",
+      "Fellatio without condom": "Fell4tion s@ns",
+      "Fellatio": "Fell4tion",
+      "fellatio": "fell4tion",
+      "Ejaculate on face": "Finition vizage",
+      "Swallow sperm": "Av4ler sp3rme",
+      "sperm": "sp3rme",
+      "Sperm": "Sp3rme",
+    };
+    let result = text;
+    for (const [original, replacement] of Object.entries(replacements)) {
+      result = result.replace(new RegExp(original, 'g'), replacement);
+    }
+    return result;
+  }
+
   private generateGreeting(businessName: string): string {
-    return `Bonjour! Bienvenue chez ${businessName}.\n\nJe suis votre assistant de reservation. Comment puis-je vous aider?\n\n[SERVICES] Tapez "services" pour voir nos prestations\n[PRIX] Tapez "prix" pour connaitre nos tarifs\n[RDV] Tapez "rdv" pour prendre rendez-vous`;
+    return `cc! je suis dispo pour toi\n\ntape *prix* pour mes tarifs\ntape *rdv* pour prendre rdv`;
   }
 
   private async generatePriceList(providerId: string): Promise<string> {
@@ -329,80 +334,97 @@ class WhatsAppManager {
     const activePrices = basePrices.filter(p => p.active);
     
     if (activePrices.length === 0) {
-      return "Désolé, aucun tarif n'est configuré pour le moment.";
+      return "desole, mes tarifs ne sont pas encore configures";
     }
 
     const durationLabels: Record<number, string> = {
-      15: "15 min", 30: "30 min", 45: "45 min", 
+      15: "15min", 30: "30min", 45: "45min", 
       60: "1h", 90: "1h30", 120: "2h"
     };
 
-    let response = "[TARIFS]\n\n";
-    response += "[PRIVE] | [ESCORT]\n";
+    let response = "mes tarifs:\n\n";
+    response += "chez moi | deplacement\n";
     response += "─────────────────\n";
     
     activePrices.forEach(price => {
-      const label = durationLabels[price.duration] || `${price.duration} min`;
+      const label = durationLabels[price.duration] || `${price.duration}min`;
       const priv = price.pricePrivate ? (price.pricePrivate / 100) : 0;
-      const esc = price.priceEscort ? (price.priceEscort / 100) : 0;
-      response += `${label}: ${priv}€ | ${esc}€\n`;
+      // Escort uniquement pour >= 60 min
+      if (price.duration >= 60) {
+        const esc = price.priceEscort ? (price.priceEscort / 100) : 0;
+        response += `${label}: ${priv}e | ${esc}e\n`;
+      } else {
+        response += `${label}: ${priv}e\n`;
+      }
     });
 
     const activeExtras = serviceExtras.filter(e => e.active);
     const activeCustom = customExtras.filter(e => e.active);
     
     if (activeExtras.length > 0 || activeCustom.length > 0) {
-      response += "\n[EXTRAS]\n";
+      response += "\nmes extras:\n";
       activeExtras.forEach(extra => {
         const extraPrice = extra.price ? (extra.price / 100) : 0;
-        response += `> ${extra.extraType}: +${extraPrice}EUR\n`;
+        response += `- ${this.censorText(extra.extraType)}: +${extraPrice}e\n`;
       });
       activeCustom.forEach(extra => {
         const extraPrice = extra.price ? (extra.price / 100) : 0;
-        response += `> ${extra.name}: +${extraPrice}EUR\n`;
+        response += `- ${this.censorText(extra.name)}: +${extraPrice}e\n`;
       });
     }
 
-    response += "\n[CMD] Tapez *prive* ou *escort* pour choisir le type";
-    response += "\n[CMD] Tapez *rdv* pour voir les disponibilites";
+    response += "\ntape *prive* pour chez moi\ntape *escort* pour deplacement (1h min)";
     return response;
   }
 
   private async generateDurationOptions(providerId: string, clientPhone: string, type: "private" | "escort"): Promise<string> {
     const basePrices = await storage.getBasePrices(providerId);
-    const activePrices = basePrices.filter(p => p.active);
+    let activePrices = basePrices.filter(p => p.active);
+    
+    // Escort uniquement pour >= 60 min
+    if (type === "escort") {
+      activePrices = activePrices.filter(p => p.duration >= 60);
+    }
     
     if (activePrices.length === 0) {
-      return "Desole, aucun tarif n'est disponible.";
+      if (type === "escort") {
+        return "desole, je me deplace uniquement pour 1h minimum\n\ntape *prive* pour chez moi";
+      }
+      return "desole, aucun tarif dispo";
     }
 
     const durationLabels: Record<number, string> = {
-      15: "15 min", 30: "30 min", 45: "45 min", 
+      15: "15min", 30: "30min", 45: "45min", 
       60: "1h", 90: "1h30", 120: "2h"
     };
 
-    const typeLabel = type === "private" ? "[PRIVE]" : "[ESCORT]";
-    let response = `${typeLabel} - Choisissez la duree:\n\n`;
+    const typeLabel = type === "private" ? "chez moi" : "deplacement";
+    let response = `ok ${typeLabel}! choisis la duree:\n\n`;
     
     activePrices.forEach((price, i) => {
-      const label = durationLabels[price.duration] || `${price.duration} min`;
+      const label = durationLabels[price.duration] || `${price.duration}min`;
       const priceValue = type === "private" 
         ? (price.pricePrivate ? price.pricePrivate / 100 : 0)
         : (price.priceEscort ? price.priceEscort / 100 : 0);
-      response += `${i + 1}. ${label} - ${priceValue}EUR\n`;
+      response += `${i + 1}. ${label} - ${priceValue}e\n`;
     });
 
-    response += "\n[CMD] Tapez le numero de la duree (ex: 1, 2, 3...)";
-    response += "\n[CMD] Tapez *extras* pour les options supplementaires";
+    response += "\ntape le numero (1, 2, 3...)";
+    response += "\ntape *extras* pour voir mes options";
     return response;
   }
 
   private async handleDurationChoice(providerId: string, clientPhone: string, content: string, type: "private" | "escort"): Promise<string> {
     const basePrices = await storage.getBasePrices(providerId);
-    const activePrices = basePrices.filter(p => p.active);
+    let activePrices = basePrices.filter(p => p.active);
+    
+    // Escort uniquement pour >= 60 min
+    if (type === "escort") {
+      activePrices = activePrices.filter(p => p.duration >= 60);
+    }
     
     const durationLabels: Record<number, string> = {
-      15: "15 min", 30: "30 min", 45: "45 min", 
+      15: "15min", 30: "30min", 45: "45min", 
       60: "1h", 90: "1h30", 120: "2h"
     };
 
@@ -433,7 +455,7 @@ class WhatsAppManager {
     }
 
     if (!selectedDuration) {
-      return "Je n'ai pas compris votre choix de duree. Tapez le numero (1, 2, 3...).";
+      return "j'ai pas compris, tape le numero (1, 2, 3...)";
     }
 
     this.updateConversationState(providerId, clientPhone, { 
@@ -441,13 +463,13 @@ class WhatsAppManager {
       basePrice: selectedPrice 
     });
 
-    const label = durationLabels[selectedDuration] || `${selectedDuration} min`;
-    const typeLabel = type === "private" ? "Prive" : "Escort";
+    const label = durationLabels[selectedDuration] || `${selectedDuration}min`;
+    const typeLabel = type === "private" ? "chez moi" : "deplacement";
     
-    let response = `[OK] ${typeLabel} - ${label}: ${selectedPrice}EUR\n\n`;
-    response += "[CMD] Tapez *extras* pour ajouter des options\n";
-    response += "[CMD] Tapez *total* pour voir le recap\n";
-    response += "[CMD] Tapez *rdv* pour reserver";
+    let response = `ok! ${typeLabel} ${label}: ${selectedPrice}e\n\n`;
+    response += "tape *extras* pour ajouter des options\n";
+    response += "tape *total* pour le recap\n";
+    response += "tape *rdv* pour reserver";
     
     return response;
   }
@@ -456,30 +478,29 @@ class WhatsAppManager {
     const state = this.getConversationState(providerId, clientPhone);
     
     if (!state.type || !state.duration) {
-      return "Aucune selection en cours.\n\n[CMD] Tapez *prive* ou *escort* pour commencer";
+      return "pas de selection en cours\n\ntape *prive* ou *escort* pour commencer";
     }
 
     const durationLabels: Record<number, string> = {
-      15: "15 min", 30: "30 min", 45: "45 min", 
+      15: "15min", 30: "30min", 45: "45min", 
       60: "1h", 90: "1h30", 120: "2h"
     };
 
-    const typeLabel = state.type === "private" ? "Prive" : "Escort";
-    const durationLabel = durationLabels[state.duration] || `${state.duration} min`;
+    const typeLabel = state.type === "private" ? "chez moi" : "deplacement";
+    const durationLabel = durationLabels[state.duration] || `${state.duration}min`;
     const total = state.basePrice + state.extrasTotal;
 
-    let response = "[RECAPITULATIF]\n\n";
-    response += `Type: ${typeLabel}\n`;
-    response += `Duree: ${durationLabel}\n`;
-    response += `Base: ${state.basePrice}EUR\n`;
+    let response = `recap:\n\n`;
+    response += `${typeLabel} - ${durationLabel}\n`;
+    response += `base: ${state.basePrice}e\n`;
     
     if (state.extras.length > 0) {
-      response += `Extras: ${state.extras.join(", ")}\n`;
-      response += `Supplements: +${state.extrasTotal}EUR\n`;
+      response += `extras: ${state.extras.map(e => this.censorText(e)).join(", ")}\n`;
+      response += `+ ${state.extrasTotal}e\n`;
     }
     
-    response += `\n[TOTAL] ${total}EUR\n\n`;
-    response += "[CMD] Tapez *rdv* pour reserver ce service";
+    response += `\ntotal: ${total}e\n\n`;
+    response += "tape *rdv* pour reserver";
     
     return response;
   }
@@ -493,29 +514,28 @@ class WhatsAppManager {
     const activeCustom = customExtras.filter(e => e.active);
     
     if (activeExtras.length === 0 && activeCustom.length === 0) {
-      return "Aucun extra n'est disponible actuellement.";
+      return "pas d'extras dispo pour le moment";
     }
 
-    let response = "[EXTRAS DISPONIBLES]\n\n";
+    let response = "mes extras:\n\n";
     
     let index = 1;
     activeExtras.forEach(extra => {
       const price = extra.price ? (extra.price / 100) : 0;
-      const selected = state.extras.includes(extra.extraType) ? " [x]" : "";
-      response += `${index}. ${extra.extraType}: +${price}EUR${selected}\n`;
+      const selected = state.extras.includes(extra.extraType) ? " [ok]" : "";
+      response += `${index}. ${this.censorText(extra.extraType)}: +${price}e${selected}\n`;
       index++;
     });
     
     activeCustom.forEach(extra => {
       const price = extra.price ? (extra.price / 100) : 0;
-      const selected = state.extras.includes(extra.name) ? " [x]" : "";
-      response += `${index}. ${extra.name}: +${price}EUR${selected}\n`;
+      const selected = state.extras.includes(extra.name) ? " [ok]" : "";
+      response += `${index}. ${this.censorText(extra.name)}: +${price}e${selected}\n`;
       index++;
     });
 
-    response += "\n[INFO] Les extras s'ajoutent au tarif de base";
-    response += "\n[CMD] Tapez +1, +2, +3... pour ajouter un extra";
-    response += "\n[CMD] Tapez *total* pour voir le recapitulatif";
+    response += "\ntape +1, +2, +3... pour ajouter";
+    response += "\ntape *total* pour le recap";
     return response;
   }
 
@@ -546,11 +566,11 @@ class WhatsAppManager {
     }
 
     if (!selectedExtra) {
-      return "Extra non trouve. Tapez +1, +2, +3... pour ajouter un extra.";
+      return "j'ai pas trouve, tape +1, +2, +3...";
     }
 
     if (state.extras.includes(selectedExtra.name)) {
-      return `[INFO] ${selectedExtra.name} deja selectionne.\n\n[CMD] Tapez *total* pour voir le recap.`;
+      return `${this.censorText(selectedExtra.name)} deja ajoute\n\ntape *total* pour le recap`;
     }
 
     const newExtras = [...state.extras, selectedExtra.name];
@@ -563,33 +583,33 @@ class WhatsAppManager {
 
     const total = state.basePrice + newExtrasTotal;
     
-    let response = `[OK] ${selectedExtra.name} ajoute (+${selectedExtra.price / 100}EUR)\n\n`;
-    response += `Extras: ${newExtras.join(", ")}\n`;
-    response += `Total actuel: ${total}EUR\n\n`;
-    response += "[CMD] Tapez *extras* pour en ajouter d'autres\n";
-    response += "[CMD] Tapez *total* pour le recap final\n";
-    response += "[CMD] Tapez *rdv* pour reserver";
+    let response = `ok! ${this.censorText(selectedExtra.name)} ajoute (+${selectedExtra.price / 100}e)\n\n`;
+    response += `extras: ${newExtras.map(e => this.censorText(e)).join(", ")}\n`;
+    response += `total: ${total}e\n\n`;
+    response += "tape *extras* pour en ajouter\n";
+    response += "tape *total* pour le recap\n";
+    response += "tape *rdv* pour reserver";
     
     return response;
   }
 
   private generateServiceInfo(services: any[]): string {
     if (services.length === 0) {
-      return "Désolé, aucun service n'est disponible pour le moment.";
+      return "desole, pas de service dispo";
     }
 
-    let response = "[NOS SERVICES]\n\n";
+    let response = "mes services:\n\n";
     services
       .filter(s => s.active)
       .forEach(service => {
-        response += `> *${service.name}*`;
+        response += `- ${service.name}`;
         if (service.description) {
-          response += `\n  ${service.description}`;
+          response += ` (${service.description})`;
         }
-        response += `\n  Duree: ${service.duration} min\n\n`;
+        response += `\n`;
       });
 
-    response += "[CMD] Tapez 'prix' pour voir nos tarifs";
+    response += "\ntape *prix* pour mes tarifs";
     return response;
   }
 
@@ -601,40 +621,29 @@ class WhatsAppManager {
     const todaySlots = await this.getAvailableSlots(providerId, today, businessHours);
     const tomorrowSlots = await this.getAvailableSlots(providerId, tomorrow, businessHours);
 
-    if (services.length === 0) {
-      return "Désolé, aucun service n'est disponible pour le moment.";
-    }
-
-    let response = "[CRENEAUX DISPONIBLES]\n\n";
+    let response = "mes dispos:\n\n";
 
     if (todaySlots.length > 0) {
-      response += "*Aujourd'hui:*\n";
+      response += "aujourd'hui:\n";
       todaySlots.forEach((slot, i) => {
         response += `${i + 1}. ${slot}\n`;
       });
     } else {
-      response += "*Aujourd'hui:* Complet\n";
+      response += "aujourd'hui: complet\n";
     }
 
     response += "\n";
 
     if (tomorrowSlots.length > 0) {
-      response += `*${format(tomorrow, "EEEE d MMMM", { locale: fr })}:*\n`;
+      response += `${format(tomorrow, "EEEE d", { locale: fr })}:\n`;
       tomorrowSlots.forEach((slot, i) => {
         response += `${todaySlots.length + i + 1}. ${slot}\n`;
       });
     } else {
-      response += `*${format(tomorrow, "EEEE d MMMM", { locale: fr })}:* Complet\n`;
+      response += `${format(tomorrow, "EEEE d", { locale: fr })}: complet\n`;
     }
 
-    response += "\n[CMD] Pour reserver, indiquez le numero du creneau souhaite (ex: '1' pour le premier creneau)";
-
-    if (services.length > 1) {
-      response += "\n\nQuel service souhaitez-vous ?\n";
-      services.filter(s => s.active).forEach((s, i) => {
-        response += `${String.fromCharCode(65 + i)}. ${s.name}\n`;
-      });
-    }
+    response += "\ntape le numero pour reserver (ex: 1)";
 
     return response;
   }
@@ -740,17 +749,23 @@ class WhatsAppManager {
         notes: null,
       });
 
-      const formattedDate = format(appointmentDate, "EEEE d MMMM 'à' HH:mm", { locale: fr });
+      const formattedDate = format(appointmentDate, "EEEE d MMMM 'a' HH:mm", { locale: fr });
       
-      return `[CONFIRME] *Rendez-vous confirme!*\n\nDate: ${formattedDate}\nService: ${selectedService.name}\nDuree: ${selectedService.duration} minutes\n\nVous recevrez un rappel 1h avant votre rendez-vous. A bientot!`;
+      return `ok c'est note! rdv ${formattedDate}\n\nje t'envoie un rappel 1h avant\na bientot`;
     } catch (error) {
       console.error("Error creating appointment:", error);
-      return "Désolé, une erreur est survenue lors de la réservation. Veuillez réessayer.";
+      return "oups erreur, reessaie stp";
     }
   }
 
   private generateDefaultResponse(businessName: string): string {
-    return `Merci pour votre message!\n\nJe suis l'assistant de ${businessName}. Voici ce que je peux faire pour vous:\n\n[SERVICES] "services" - Voir nos prestations\n[PRIX] "prix" - Connaitre nos tarifs\n[RDV] "rdv" - Prendre rendez-vous\n\nComment puis-je vous aider?`;
+    return `cc!\n\ntape *prix* pour mes tarifs\ntape *rdv* pour reserver`;
+  }
+
+  // Send no-show warning message to client (called from Agenda UI)
+  async sendNoShowWarning(providerId: string, clientPhone: string): Promise<void> {
+    const message = "coucou, je vois que tu n'es pas venu... s'il te plait, ne reserve que si tu es certain de venir. mon systeme bloque les numeros apres deux absences, donc si tu rates le prochain, je ne pourrai plus te donner de rdv. on fait attention?";
+    await this.sendMessage(providerId, clientPhone, message);
   }
 
   async sendMessage(providerId: string, to: string, message: string) {

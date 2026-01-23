@@ -82,11 +82,14 @@ export default function AgendaPage() {
   });
 
   const noShowMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("PATCH", `/api/appointments/${id}`, { status: "no-show" }),
-    onSuccess: () => {
+    mutationFn: (id: string) => apiRequest("POST", `/api/appointments/${id}/noshow`),
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Succès", description: "Marqué comme no-show" });
+      toast({ 
+        title: "No-show enregistre", 
+        description: `Message d'avertissement envoye. Total absences: ${data.noShowTotal}` 
+      });
       setSelectedAppointment(null);
     },
     onError: () => {

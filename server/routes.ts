@@ -602,5 +602,103 @@ export async function registerRoutes(
     }
   });
 
+  // Availability Mode
+  app.get("/api/provider/availability-mode", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      res.json({ mode: profile.availabilityMode || "active" });
+    } catch (error) {
+      console.error("Error fetching availability mode:", error);
+      res.status(500).json({ message: "Failed to fetch availability mode" });
+    }
+  });
+
+  app.patch("/api/provider/availability-mode", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { mode } = req.body;
+      
+      if (!["active", "away", "ghost"].includes(mode)) {
+        return res.status(400).json({ message: "Invalid mode. Must be 'active', 'away', or 'ghost'" });
+      }
+      
+      const updated = await storage.updateProviderProfile(profile.id, { availabilityMode: mode });
+      res.json({ mode: updated?.availabilityMode });
+    } catch (error) {
+      console.error("Error updating availability mode:", error);
+      res.status(500).json({ message: "Failed to update availability mode" });
+    }
+  });
+
+  // No-show from Agenda (sends warning message + increments counter)
+  app.post("/api/appointments/:id/noshow", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const appointment = await storage.getAppointment(id);
+      
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      if (appointment.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Update appointment status to no-show
+      await storage.updateAppointment(id, { status: "no-show" });
+      
+      // Increment no-show counter for client
+      const reliability = await storage.incrementNoShow(appointment.clientPhone, profile.id);
+      
+      // Send warning message via WhatsApp
+      await whatsappManager.sendNoShowWarning(profile.id, appointment.clientPhone);
+      
+      res.json({ 
+        success: true, 
+        noShowTotal: reliability.noShowTotal,
+        message: "No-show marked and warning sent to client"
+      });
+    } catch (error) {
+      console.error("Error marking no-show:", error);
+      res.status(500).json({ message: "Failed to mark no-show" });
+    }
+  });
+
+  // Safety Blacklist - Report dangerous client
+  app.post("/api/safety-blacklist", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { phone, reason } = req.body;
+      
+      if (!phone) {
+        return res.status(400).json({ message: "Phone number is required" });
+      }
+      
+      const entry = await storage.reportDangerousClient(phone, profile.id, reason || "danger");
+      res.status(201).json(entry);
+    } catch (error) {
+      console.error("Error reporting dangerous client:", error);
+      res.status(500).json({ message: "Failed to report dangerous client" });
+    }
+  });
+
+  // Dashboard Stats with dangerous clients count
+  app.get("/api/dashboard/extended-stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const stats = await storage.getDashboardStats(profile.id);
+      const dangerousClientsFiltered = await storage.getDangerousClientsFilteredCount();
+      
+      res.json({
+        ...stats,
+        dangerousClientsFiltered,
+      });
+    } catch (error) {
+      console.error("Error fetching extended stats:", error);
+      res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
   return httpServer;
 }

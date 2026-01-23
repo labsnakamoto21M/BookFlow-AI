@@ -9,7 +9,8 @@ import {
   XCircle,
   Clock,
   TrendingUp,
-  MessageSquare
+  MessageSquare,
+  ShieldAlert
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { format, isToday, isTomorrow, parseISO } from "date-fns";
@@ -23,6 +24,7 @@ interface DashboardStats {
   noShowsThisMonth: number;
   totalClients: number;
   messagesThisWeek: number;
+  dangerousClientsFiltered?: number;
 }
 
 interface UpcomingAppointment extends Appointment {
@@ -35,7 +37,7 @@ export default function DashboardPage() {
   });
 
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/dashboard/stats"],
+    queryKey: ["/api/dashboard/extended-stats"],
   });
 
   const { data: upcomingAppointments, isLoading: appointmentsLoading } = useQuery<UpcomingAppointment[]>({
@@ -70,6 +72,13 @@ export default function DashboardPage() {
       icon: XCircle,
       color: "text-red-600",
       bgColor: "bg-red-100 dark:bg-red-900/30",
+    },
+    {
+      title: "Clients dangereux filtres",
+      value: stats?.dangerousClientsFiltered ?? 0,
+      icon: ShieldAlert,
+      color: "text-primary",
+      bgColor: "bg-primary/10",
     },
   ];
 
@@ -112,7 +121,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {statCards.map((stat, index) => (
           <Card key={index}>
             <CardContent className="p-6">

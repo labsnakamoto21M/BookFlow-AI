@@ -19,6 +19,7 @@ export const providerProfiles = pgTable("provider_profiles", {
   whatsappSessionData: text("whatsapp_session_data"),
   stripeCustomerId: text("stripe_customer_id"),
   subscriptionStatus: text("subscription_status").default("trial"),
+  availabilityMode: text("availability_mode").default("active"), // active, away, ghost
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -157,6 +158,18 @@ export const noShowReports = pgTable("no_show_reports", {
   index("idx_no_show_reports_provider").on(table.providerId),
 ]);
 
+// Safety blacklist for dangerous clients (shared across all providers)
+export const safetyBlacklist = pgTable("safety_blacklist", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  phone: text("phone").notNull(),
+  reportedBy: varchar("reported_by").notNull(), // provider who reported
+  reason: text("reason").default("danger"), // danger, violence, threat
+  reportCount: integer("report_count").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_safety_blacklist_phone").on(table.phone),
+]);
+
 // Relations
 export const providerProfilesRelations = relations(providerProfiles, ({ many }) => ({
   services: many(services),
@@ -250,6 +263,11 @@ export const insertNoShowReportSchema = createInsertSchema(noShowReports).omit({
   reportedAt: true,
 });
 
+export const insertSafetyBlacklistSchema = createInsertSchema(safetyBlacklist).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type ProviderProfile = typeof providerProfiles.$inferSelect;
 export type InsertProviderProfile = z.infer<typeof insertProviderProfileSchema>;
@@ -288,3 +306,6 @@ export type InsertProviderBlock = z.infer<typeof insertProviderBlockSchema>;
 
 export type NoShowReport = typeof noShowReports.$inferSelect;
 export type InsertNoShowReport = z.infer<typeof insertNoShowReportSchema>;
+
+export type SafetyBlacklistEntry = typeof safetyBlacklist.$inferSelect;
+export type InsertSafetyBlacklist = z.infer<typeof insertSafetyBlacklistSchema>;

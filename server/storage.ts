@@ -11,6 +11,7 @@ import {
   basePrices,
   serviceExtras,
   customExtras,
+  safetyBlacklist,
   type Service, 
   type InsertService,
   type BusinessHours,
@@ -32,6 +33,8 @@ import {
   type InsertServiceExtra,
   type CustomExtra,
   type InsertCustomExtra,
+  type SafetyBlacklistEntry,
+  type InsertSafetyBlacklist,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql, desc, count } from "drizzle-orm";
@@ -113,6 +116,13 @@ export interface IStorage {
   createCustomExtra(extra: InsertCustomExtra): Promise<CustomExtra>;
   updateCustomExtra(id: string, updates: Partial<InsertCustomExtra>): Promise<CustomExtra | undefined>;
   deleteCustomExtra(id: string): Promise<void>;
+  
+  // Safety Blacklist (dangerous clients)
+  getSafetyBlacklist(): Promise<SafetyBlacklistEntry[]>;
+  getSafetyBlacklistByPhone(phone: string): Promise<SafetyBlacklistEntry | undefined>;
+  reportDangerousClient(phone: string, reportedBy: string, reason?: string): Promise<SafetyBlacklistEntry>;
+  isDangerousClient(phone: string): Promise<boolean>;
+  getDangerousClientsFilteredCount(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -578,6 +588,50 @@ export class DatabaseStorage implements IStorage {
   
   async deleteCustomExtra(id: string): Promise<void> {
     await db.delete(customExtras).where(eq(customExtras.id, id));
+  }
+  
+  // Safety Blacklist
+  async getSafetyBlacklist(): Promise<SafetyBlacklistEntry[]> {
+    return db.select().from(safetyBlacklist).orderBy(desc(safetyBlacklist.createdAt));
+  }
+  
+  async getSafetyBlacklistByPhone(phone: string): Promise<SafetyBlacklistEntry | undefined> {
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const [entry] = await db.select().from(safetyBlacklist)
+      .where(sql`replace(${safetyBlacklist.phone}, '+', '') LIKE '%' || ${normalizedPhone} || '%'`);
+    return entry;
+  }
+  
+  async reportDangerousClient(phone: string, reportedBy: string, reason: string = "danger"): Promise<SafetyBlacklistEntry> {
+    const existing = await this.getSafetyBlacklistByPhone(phone);
+    
+    if (existing) {
+      const [updated] = await db.update(safetyBlacklist)
+        .set({ reportCount: (existing.reportCount || 1) + 1 })
+        .where(eq(safetyBlacklist.id, existing.id))
+        .returning();
+      return updated;
+    }
+    
+    const [result] = await db.insert(safetyBlacklist).values({
+      phone,
+      reportedBy,
+      reason,
+      reportCount: 1,
+    }).returning();
+    return result;
+  }
+  
+  async isDangerousClient(phone: string): Promise<boolean> {
+    const entry = await this.getSafetyBlacklistByPhone(phone);
+    return entry !== undefined && (entry.reportCount || 0) >= 2;
+  }
+  
+  async getDangerousClientsFilteredCount(): Promise<number> {
+    const result = await db.select({ count: count() })
+      .from(safetyBlacklist)
+      .where(gte(safetyBlacklist.reportCount, 2));
+    return result[0]?.count || 0;
   }
 }
 
