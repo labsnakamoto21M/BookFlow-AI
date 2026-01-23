@@ -227,39 +227,46 @@ export default function ServicesPage() {
               <span>ESCORT (EUR)</span>
               <span>ACTIVE</span>
             </div>
-            {DURATION_TIERS.map((tier) => (
-              <div
-                key={tier.duration}
-                className="grid grid-cols-4 gap-4 items-center py-2 border-b border-[#39FF14]/10"
-                data-testid={`row-duration-${tier.duration}`}
-              >
-                <span className="text-[#39FF14] font-bold">{tier.label}</span>
-                <Input
-                  type="number"
-                  value={basePricesState[tier.duration]?.pricePrivate || 0}
-                  onChange={(e) =>
-                    handleBasePriceChange(tier.duration, "pricePrivate", parseFloat(e.target.value) || 0)
-                  }
-                  className="bg-black border-[#39FF14]/50 text-[#39FF14] font-mono focus:border-[#39FF14]"
-                  data-testid={`input-private-${tier.duration}`}
-                />
-                <Input
-                  type="number"
-                  value={basePricesState[tier.duration]?.priceEscort || 0}
-                  onChange={(e) =>
-                    handleBasePriceChange(tier.duration, "priceEscort", parseFloat(e.target.value) || 0)
-                  }
-                  className="bg-black border-[#39FF14]/50 text-[#39FF14] font-mono focus:border-[#39FF14]"
-                  data-testid={`input-escort-${tier.duration}`}
-                />
-                <Switch
-                  checked={basePricesState[tier.duration]?.active || false}
-                  onCheckedChange={(checked) => handleBasePriceChange(tier.duration, "active", checked)}
-                  className="data-[state=checked]:bg-[#39FF14]"
-                  data-testid={`switch-active-${tier.duration}`}
-                />
-              </div>
-            ))}
+            {DURATION_TIERS.map((tier) => {
+              const escortAvailable = tier.duration >= 60;
+              return (
+                <div
+                  key={tier.duration}
+                  className="grid grid-cols-4 gap-4 items-center py-2 border-b border-[#39FF14]/10"
+                  data-testid={`row-duration-${tier.duration}`}
+                >
+                  <span className="text-[#39FF14] font-bold">{tier.label}</span>
+                  <Input
+                    type="number"
+                    value={basePricesState[tier.duration]?.pricePrivate || 0}
+                    onChange={(e) =>
+                      handleBasePriceChange(tier.duration, "pricePrivate", parseFloat(e.target.value) || 0)
+                    }
+                    className="bg-black border-[#39FF14]/50 text-[#39FF14] font-mono focus:border-[#39FF14]"
+                    data-testid={`input-private-${tier.duration}`}
+                  />
+                  {escortAvailable ? (
+                    <Input
+                      type="number"
+                      value={basePricesState[tier.duration]?.priceEscort || 0}
+                      onChange={(e) =>
+                        handleBasePriceChange(tier.duration, "priceEscort", parseFloat(e.target.value) || 0)
+                      }
+                      className="bg-black border-[#39FF14]/50 text-[#39FF14] font-mono focus:border-[#39FF14]"
+                      data-testid={`input-escort-${tier.duration}`}
+                    />
+                  ) : (
+                    <span className="text-[#39FF14]/30 font-mono text-sm">N/A</span>
+                  )}
+                  <Switch
+                    checked={basePricesState[tier.duration]?.active || false}
+                    onCheckedChange={(checked) => handleBasePriceChange(tier.duration, "active", checked)}
+                    className="data-[state=checked]:bg-[#39FF14]"
+                    data-testid={`switch-active-${tier.duration}`}
+                  />
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
