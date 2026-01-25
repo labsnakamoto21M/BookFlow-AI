@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import AuthPage from "@/pages/auth-page";
+import ForgotPasswordPage from "@/pages/forgot-password";
 import DashboardPage from "@/pages/dashboard";
 import ServicesPage from "@/pages/services";
 import HorairesPage from "@/pages/horaires";
@@ -80,7 +81,12 @@ function AppContent() {
   }
 
   if (!user) {
-    return <AuthPage />;
+    return (
+      <Switch>
+        <Route path="/forgot-password" component={ForgotPasswordPage} />
+        <Route component={AuthPage} />
+      </Switch>
+    );
   }
 
   return <AuthenticatedRouter />;
