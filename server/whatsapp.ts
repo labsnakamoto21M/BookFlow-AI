@@ -196,6 +196,12 @@ class WhatsAppManager {
       return;
     }
 
+    // FILTER 1b: Ignore media messages to save RAM - don't download or process them
+    // Bot only needs text messages, media would be loaded into memory unnecessarily
+    if (msg.hasMedia) {
+      return;
+    }
+
     const clientPhone = msg.from.replace("@c.us", "");
 
     // Get provider profile first to check availability mode
@@ -886,8 +892,13 @@ class WhatsAppManager {
             this.conversationStates.delete(key);
           }
         }
-        // Reinitialize after a short delay
-        setTimeout(() => this.initSession(providerId), 5000);
+        // Reinitialize after a short delay and update lastRestart
+        setTimeout(async () => {
+          const newSession = await this.initSession(providerId);
+          if (newSession) {
+            newSession.lastRestart = Date.now();
+          }
+        }, 5000);
       } catch (error) {
         console.error(`[WhatsApp] Error during auto-restart for ${providerId}:`, error);
       }
