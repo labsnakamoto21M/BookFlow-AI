@@ -4,6 +4,9 @@ import qrcode from "qrcode";
 import { storage } from "./storage";
 import { format, addDays, startOfDay, endOfDay, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
+import cron from "node-cron";
+import fs from "fs";
+import path from "path";
 
 type ClientType = InstanceType<typeof Client>;
 
@@ -13,6 +16,8 @@ interface WhatsAppSession {
   connected: boolean;
   phoneNumber: string | null;
   providerId: string;
+  createdAt: number;
+  lastRestart: number;
 }
 
 interface ConversationState {
@@ -86,17 +91,54 @@ class WhatsAppManager {
           "--no-zygote",
           "--disable-gpu",
           "--disable-extensions",
-          "--single-process"
+          "--single-process",
+          "--disable-background-networking",
+          "--disable-default-apps",
+          "--disable-sync",
+          "--disable-translate",
+          "--hide-scrollbars",
+          "--metrics-recording-only",
+          "--mute-audio",
+          "--no-default-browser-check",
+          "--disable-features=TranslateUI",
+          "--disable-component-extensions-with-background-pages",
+          "--disable-ipc-flooding-protection",
+          "--disable-renderer-backgrounding",
+          "--force-color-profile=srgb",
+          "--disable-backgrounding-occluded-windows",
         ],
       },
     });
 
+    // Block media requests to reduce RAM usage by 30-50%
+    client.on("ready", async () => {
+      try {
+        const page = await (client as any).pupPage;
+        if (page) {
+          await page.setRequestInterception(true);
+          page.on("request", (req: any) => {
+            const resourceType = req.resourceType();
+            if (["image", "media", "font", "stylesheet"].includes(resourceType)) {
+              req.abort();
+            } else {
+              req.continue();
+            }
+          });
+        }
+      } catch (err) {
+        // Request interception setup failed, continue without it
+      }
+    });
+
+    const now = Date.now();
     const session: WhatsAppSession = {
       client,
       qrCode: null,
       connected: false,
       phoneNumber: null,
       providerId,
+      createdAt: now,
+      lastRestart: now,
     };
 
     this.sessions.set(providerId, session);
@@ -823,6 +865,159 @@ class WhatsAppManager {
       await this.initSession(providerId);
     }
   }
+
+  // Auto-restart session to prevent memory leaks (every 3 days)
+  private async autoRestartSession(providerId: string): Promise<void> {
+    const session = this.sessions.get(providerId);
+    if (!session) return;
+
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+    const timeSinceRestart = Date.now() - session.lastRestart;
+
+    if (timeSinceRestart >= threeDaysMs && session.connected) {
+      console.log(`[WhatsApp] Auto-restarting session for provider ${providerId} (3-day cycle)`);
+      try {
+        await session.client.destroy();
+        this.sessions.delete(providerId);
+        // Clear conversation states for this provider
+        const convKeys = Array.from(this.conversationStates.keys());
+        for (const key of convKeys) {
+          if (key.startsWith(`${providerId}:`)) {
+            this.conversationStates.delete(key);
+          }
+        }
+        // Reinitialize after a short delay
+        setTimeout(() => this.initSession(providerId), 5000);
+      } catch (error) {
+        console.error(`[WhatsApp] Error during auto-restart for ${providerId}:`, error);
+      }
+    }
+  }
+
+  // Check all sessions and restart if needed
+  async checkAndRestartSessions(): Promise<void> {
+    const sessionEntries = Array.from(this.sessions.entries());
+    for (const [providerId] of sessionEntries) {
+      await this.autoRestartSession(providerId);
+    }
+  }
+
+  // Graceful shutdown - destroy all sessions properly
+  async gracefulShutdown(): Promise<void> {
+    console.log("[WhatsApp] Graceful shutdown initiated...");
+    const shutdownPromises: Promise<void>[] = [];
+
+    const sessionEntries = Array.from(this.sessions.entries());
+    for (const [providerId, session] of sessionEntries) {
+      shutdownPromises.push(
+        (async () => {
+          try {
+            await session.client.destroy();
+            console.log(`[WhatsApp] Session ${providerId} destroyed`);
+          } catch (error) {
+            console.error(`[WhatsApp] Error destroying session ${providerId}:`, error);
+          }
+        })()
+      );
+    }
+
+    await Promise.all(shutdownPromises);
+    this.sessions.clear();
+    this.conversationStates.clear();
+    this.awayMessageSent.clear();
+    console.log("[WhatsApp] All sessions cleaned up");
+  }
+
+  // Clean temporary files (except essential auth files)
+  async cleanupTempFiles(): Promise<void> {
+    const authPath = "./.wwebjs_auth";
+    const essentialFiles = ["session"];
+
+    try {
+      if (!fs.existsSync(authPath)) return;
+
+      const sessionDirs = fs.readdirSync(authPath);
+      for (const dir of sessionDirs) {
+        const dirPath = path.join(authPath, dir);
+        if (!fs.statSync(dirPath).isDirectory()) continue;
+
+        // Clean cache and temp files, keep auth data
+        const cleanDirs = ["Cache", "Code Cache", "GPUCache", "Service Worker"];
+        for (const cleanDir of cleanDirs) {
+          const cleanPath = path.join(dirPath, "Default", cleanDir);
+          if (fs.existsSync(cleanPath)) {
+            try {
+              fs.rmSync(cleanPath, { recursive: true, force: true });
+              console.log(`[WhatsApp] Cleaned: ${cleanPath}`);
+            } catch (err) {
+              // Ignore errors during cleanup
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[WhatsApp] Error during temp cleanup:", error);
+    }
+  }
+
+  // Clear expired conversation states (30 min timeout)
+  cleanupExpiredConversations(): void {
+    const now = Date.now();
+    const thirtyMinutes = 30 * 60 * 1000;
+
+    const convEntries = Array.from(this.conversationStates.entries());
+    for (const [key, state] of convEntries) {
+      if (now - state.lastUpdate > thirtyMinutes) {
+        this.conversationStates.delete(key);
+      }
+    }
+
+    // Also clean expired away messages (1 hour)
+    const oneHour = 60 * 60 * 1000;
+    const awayEntries = Array.from(this.awayMessageSent.entries());
+    for (const [key, timestamp] of awayEntries) {
+      if (now - timestamp > oneHour) {
+        this.awayMessageSent.delete(key);
+      }
+    }
+  }
+
+  // Initialize maintenance cron jobs
+  initMaintenanceJobs(): void {
+    // Daily cleanup at 4:00 AM
+    cron.schedule("0 4 * * *", async () => {
+      console.log("[WhatsApp] Running daily maintenance (4 AM)...");
+      await this.cleanupTempFiles();
+      this.cleanupExpiredConversations();
+    });
+
+    // Check sessions every 6 hours for auto-restart
+    cron.schedule("0 */6 * * *", async () => {
+      console.log("[WhatsApp] Checking sessions for auto-restart...");
+      await this.checkAndRestartSessions();
+    });
+
+    // Cleanup conversations every 15 minutes
+    cron.schedule("*/15 * * * *", () => {
+      this.cleanupExpiredConversations();
+    });
+
+    console.log("[WhatsApp] Maintenance jobs initialized");
+  }
 }
 
 export const whatsappManager = new WhatsAppManager();
+
+// Initialize maintenance jobs on startup
+whatsappManager.initMaintenanceJobs();
+
+// Handle process signals for graceful shutdown
+process.on("SIGTERM", async () => {
+  await whatsappManager.gracefulShutdown();
+  process.exit(0);
+});
+
+process.on("SIGINT", async () => {
+  await whatsappManager.gracefulShutdown();
+  process.exit(0);
+});

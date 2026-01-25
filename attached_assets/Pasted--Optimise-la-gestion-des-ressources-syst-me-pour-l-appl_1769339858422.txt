@@ -1,0 +1,14 @@
+"Optimise la gestion des ressources système pour l'application ChatSlot afin de réduire la consommation de RAM et de CPU. L'objectif est de permettre une exécution stable 24/7 sur une instance Replit limitée.
+1. OPTIMISATION DE PUPPETEER (Le moteur Chromium) :
+Dans whatsapp.ts, modifie l'initialisation de Client avec les options suivantes :
+Désactivation des ressources inutiles : Ajoute les arguments suivants à Puppeteer pour bloquer tout ce qui n'est pas nécessaire au fonctionnement du bot :
+--disable-extensions, --disable-gpu, --disable-dev-shm-usage, --no-sandbox, --disable-setuid-sandbox, --disable-accelerated-2d-canvas, --no-first-run, --no-zygote, --single-process.
+Blocage des médias : Configure Puppeteer pour intercepter les requêtes et bloquer le chargement des images, des vidéos et des polices de caractères. Le bot n'a besoin que du texte pour fonctionner. Cela réduira la consommation de RAM de 30% à 50%.
+2. NETTOYAGE DES CACHES ET DISQUE :
+Gestion des médias WhatsApp : Configure whatsapp-web.js pour ne pas enregistrer les fichiers médias (photos, vocaux) reçus des clients.
+Auto-Cleanup : Ajoute une fonction de maintenance qui s'exécute tous les jours à 4h du matin pour supprimer les fichiers temporaires dans le dossier de session (hormis les fichiers d'authentification essentiels).
+3. GESTION DES FUITES DE MÉMOIRE (Memory Leaks) :
+Auto-Restart Session : Implémente une fonction qui redémarre la session WhatsApp d'un prestataire si l'utilisation de la mémoire dépasse un certain seuil ou au moins une fois tous les 3 jours. Cela permet de vider la RAM accumulée par Chromium sans perdre les données de l'utilisateur.
+Graceful Shutdown : Assure-toi que chaque session est proprement fermée (client.destroy()) si l'utilisateur se déconnecte, pour ne pas laisser de processus 'fantômes' tourner en arrière-plan.
+4. LOGIQUE DE TRAITEMENT ÉPHÉMÈRE :
+Rappelle au système de ne jamais stocker le contenu des messages en mémoire vive plus longtemps que nécessaire pour la réponse du bot. Une fois la réponse envoyée, l'objet message doit être libéré."
