@@ -27,6 +27,7 @@ interface ConversationState {
 class WhatsAppManager {
   private sessions: Map<string, WhatsAppSession> = new Map();
   private conversationStates: Map<string, ConversationState> = new Map();
+  private awayMessageSent: Map<string, number> = new Map(); // Track AWAY messages sent to avoid spam
 
   private getConversationKey(providerId: string, clientPhone: string): string {
     return `${providerId}:${clientPhone}`;
@@ -110,20 +111,17 @@ class WhatsAppManager {
       session.qrCode = null;
       const info = client.info;
       session.phoneNumber = info?.wid?.user || null;
-      
       await storage.updateProviderProfile(providerId, { whatsappConnected: true });
-      console.log(`WhatsApp connected for provider ${providerId}`);
     });
 
     client.on("authenticated", () => {
-      console.log(`WhatsApp authenticated for provider ${providerId}`);
+      // Authenticated successfully
     });
 
     client.on("disconnected", async (reason) => {
       session.connected = false;
       session.phoneNumber = null;
       await storage.updateProviderProfile(providerId, { whatsappConnected: false });
-      console.log(`WhatsApp disconnected for provider ${providerId}: ${reason}`);
     });
 
     client.on("message", async (msg) => {
@@ -138,7 +136,7 @@ class WhatsAppManager {
     try {
       await client.initialize();
     } catch (error) {
-      console.error(`Failed to initialize WhatsApp for provider ${providerId}:`, error);
+      // Failed to initialize - will retry on next connection attempt
     }
 
     return session;
@@ -153,7 +151,6 @@ class WhatsAppManager {
   async handleIncomingMessage(providerId: string, msg: any) {
     // FILTER 1: Ignore all group messages (group chats end with @g.us)
     if (msg.from.endsWith("@g.us")) {
-      console.log(`Ignoring group message for provider ${providerId}`);
       return;
     }
 
@@ -165,14 +162,26 @@ class WhatsAppManager {
 
     // FILTER 2: Check availability mode - GHOST mode = total silence
     if (profile.availabilityMode === "ghost") {
-      console.log(`Provider ${providerId} in GHOST mode - ignoring message from ${clientPhone}`);
+      return;
+    }
+
+    // FILTER 2b: AWAY mode = send unique message then ignore
+    if (profile.availabilityMode === "away") {
+      const awayKey = this.getConversationKey(providerId, clientPhone);
+      const lastAwaySent = this.awayMessageSent.get(awayKey);
+      const oneHourAgo = Date.now() - (60 * 60 * 1000);
+      
+      // Only send AWAY message once per hour per client
+      if (!lastAwaySent || lastAwaySent < oneHourAgo) {
+        await this.sendMessage(providerId, clientPhone, "cc! je suis indisponible pour le moment, mais laisse ton message et je te repondrai plus tard");
+        this.awayMessageSent.set(awayKey, Date.now());
+      }
       return;
     }
 
     // FILTER 3: Check if sender is a dangerous client (2+ safety reports) - silent ignore
     const isDangerous = await storage.isDangerousClient(clientPhone);
     if (isDangerous) {
-      console.log(`Dangerous client ${clientPhone} filtered for provider ${providerId}`);
       return; // Silent ignore for dangerous clients
     }
 
@@ -180,11 +189,10 @@ class WhatsAppManager {
     try {
       const contact = await msg.getContact();
       if (contact && contact.isMyContact) {
-        console.log(`Known contact ${contact.pushname || contact.number} messaged provider ${providerId} - staying silent`);
         return;
       }
     } catch (error) {
-      console.error(`Error checking contact status:`, error);
+      // Continue if contact check fails
     }
 
     const content = msg.body.toLowerCase().trim();
@@ -197,23 +205,18 @@ class WhatsAppManager {
     // Check if client is personally blocked by this provider
     const isBlocked = await storage.isBlockedByProvider(providerId, clientPhone);
     if (isBlocked) {
-      console.log(`Blocked client ${clientPhone} tried to contact provider ${providerId} - ignoring`);
       return;
     }
 
     // Check client reliability score - if 2+ no-shows, refuse booking
     const reliability = await storage.getClientReliability(clientPhone);
     if (reliability && reliability.noShowTotal && reliability.noShowTotal >= 2) {
-      console.log(`Client ${clientPhone} has ${reliability.noShowTotal} no-shows - refusing booking`);
       await this.sendMessage(providerId, clientPhone, "desole, je ne peux plus te donner de rdv. tu as rate trop de rdv sans prevenir.");
       return;
     }
 
-    // Check if client is in shared blacklist
-    const blacklisted = await storage.isBlacklisted(clientPhone);
-    if (blacklisted) {
-      console.log(`Blacklisted client ${clientPhone} tried to contact provider ${providerId}`);
-    }
+    // Check if client is in shared blacklist (continue but be cautious)
+    await storage.isBlacklisted(clientPhone);
 
     let response = "";
 
@@ -771,16 +774,17 @@ class WhatsAppManager {
   async sendMessage(providerId: string, to: string, message: string) {
     const session = this.sessions.get(providerId);
     if (!session?.connected) {
-      console.error(`Cannot send message: WhatsApp not connected for provider ${providerId}`);
       return;
     }
 
     try {
       const chatId = to.includes("@c.us") ? to : `${to}@c.us`;
-      await session.client.sendMessage(chatId, message);
+      // Apply censorship to ALL outgoing messages for anti-ban protection
+      const censoredMessage = this.censorText(message);
+      await session.client.sendMessage(chatId, censoredMessage);
       // GDPR: No message content logging - messages are processed ephemerally
     } catch (error) {
-      console.error(`Error sending message:`, error);
+      // Silent fail for production
     }
   }
 
@@ -800,7 +804,7 @@ class WhatsAppManager {
         await session.client.logout();
         await session.client.destroy();
       } catch (error) {
-        console.error(`Error disconnecting WhatsApp for provider ${providerId}:`, error);
+        // Silent fail on disconnect
       }
       this.sessions.delete(providerId);
     }

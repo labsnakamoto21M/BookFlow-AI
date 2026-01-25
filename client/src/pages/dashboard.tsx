@@ -74,11 +74,12 @@ export default function DashboardPage() {
       bgColor: "bg-red-100 dark:bg-red-900/30",
     },
     {
-      title: "Clients dangereux filtres",
+      title: "Profils dangereux ecartes",
       value: stats?.dangerousClientsFiltered ?? 0,
       icon: ShieldAlert,
-      color: "text-primary",
-      bgColor: "bg-primary/10",
+      color: "text-red-500",
+      bgColor: "bg-red-500/10",
+      special: true,
     },
   ];
 
@@ -123,7 +124,7 @@ export default function DashboardPage() {
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {statCards.map((stat, index) => (
-          <Card key={index}>
+          <Card key={index} className={(stat as any).special ? "border-red-500/50" : ""}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
@@ -131,9 +132,12 @@ export default function DashboardPage() {
                   {statsLoading ? (
                     <Skeleton className="h-8 w-12" />
                   ) : (
-                    <p className="text-3xl font-bold" data-testid={`text-stat-${index}`}>
+                    <p className={`text-3xl font-bold ${(stat as any).special ? "text-red-500" : ""}`} data-testid={`text-stat-${index}`}>
                       {stat.value}
                     </p>
+                  )}
+                  {(stat as any).special && stat.value > 0 && (
+                    <p className="text-xs text-red-400">Votre securite: protection active</p>
                   )}
                 </div>
                 <div className={`h-12 w-12 rounded-lg ${stat.bgColor} flex items-center justify-center`}>

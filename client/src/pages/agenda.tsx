@@ -359,12 +359,12 @@ export default function AgendaPage() {
                   <>
                     <Button
                       variant="outline"
-                      className="flex-1"
+                      className="flex-1 border-red-500 text-red-500 hover:bg-red-500/10"
                       onClick={() => noShowMutation.mutate(selectedAppointment.id)}
                       disabled={noShowMutation.isPending}
                       data-testid="button-no-show"
                     >
-                      Marquer no-show
+                      REPORT_GHOST
                     </Button>
                     <Button
                       variant="destructive"
