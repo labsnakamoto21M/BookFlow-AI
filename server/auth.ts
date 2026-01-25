@@ -5,8 +5,12 @@ import { db } from "./db";
 import { users, registerSchema, loginSchema } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "chatslot-secret-key-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET;
 const JWT_EXPIRES_IN = "7d";
+
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET or SESSION_SECRET environment variable is required");
+}
 
 export interface JWTPayload {
   userId: string;
