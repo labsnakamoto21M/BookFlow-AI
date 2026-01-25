@@ -9,7 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import LandingPage from "@/pages/landing";
+import AuthPage from "@/pages/auth-page";
 import DashboardPage from "@/pages/dashboard";
 import ServicesPage from "@/pages/services";
 import HorairesPage from "@/pages/horaires";
@@ -80,7 +80,7 @@ function AppContent() {
   }
 
   if (!user) {
-    return <LandingPage />;
+    return <AuthPage />;
   }
 
   return <AuthenticatedRouter />;

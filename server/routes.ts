@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { registerAuthRoutes, isAuthenticated } from "./auth";
 import { whatsappManager } from "./whatsapp";
 import { startReminderService } from "./reminder";
 import { z } from "zod";
@@ -19,23 +19,20 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Setup authentication
-  await setupAuth(app);
   registerAuthRoutes(app);
 
   // Start reminder service
   startReminderService();
 
-  // Helper to get provider profile for current user
   async function getOrCreateProviderProfile(req: any) {
-    const userId = req.user.claims.sub;
+    const userId = req.user.id;
     let profile = await storage.getProviderProfile(userId);
     
     if (!profile) {
       profile = await storage.upsertProviderProfile({
         userId,
-        businessName: req.user.claims.first_name 
-          ? `${req.user.claims.first_name}'s Business`
+        businessName: req.user.firstName 
+          ? `${req.user.firstName}'s Business`
           : "Mon Entreprise",
         description: null,
         phone: null,
