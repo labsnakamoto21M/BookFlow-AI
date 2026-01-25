@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db } from "./db";
-import { users, registerSchema, loginSchema } from "@shared/schema";
+import { users, registerSchema, loginSchema, resetPasswordSchema } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET;
@@ -10,6 +10,30 @@ const JWT_EXPIRES_IN = "7d";
 
 if (!JWT_SECRET) {
   throw new Error("JWT_SECRET or SESSION_SECRET environment variable is required");
+}
+
+const WORDLIST = [
+  "alpha", "bravo", "cyber", "delta", "echo", "foxtrot", "ghost", "hacker",
+  "intel", "jungle", "krypto", "laser", "matrix", "neon", "omega", "phantom",
+  "quantum", "radar", "shadow", "turbo", "ultra", "vector", "warp", "xenon",
+  "zodiac", "access", "binary", "cipher", "daemon", "enigma", "firewall", "grid",
+  "hexagon", "icarus", "joker", "kernel", "logic", "module", "nexus", "orbit",
+  "pixel", "quasar", "router", "server", "token", "uplink", "vertex", "wire",
+  "zenith", "archive", "beacon", "cortex", "digital", "entropy", "flux", "gamma",
+  "horizon", "index", "jolt", "kinetic", "lambda", "macro", "neural", "oxide",
+  "pulse", "qubit", "relay", "signal", "trace", "unity", "voltage", "wave",
+  "xray", "yield", "zero", "apex", "blast", "clone", "drone", "edge", "forge",
+  "glitch", "hydra", "inject", "jack", "link", "morph", "node", "onyx", "prime",
+  "quest", "rogue", "spark", "titan", "vortex", "wraith", "axis", "bolt", "core"
+];
+
+export function generateRecoveryPhrase(): string {
+  const words: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const randomIndex = Math.floor(Math.random() * WORDLIST.length);
+    words.push(WORDLIST[randomIndex]);
+  }
+  return words.join(" ");
 }
 
 export interface JWTPayload {
@@ -31,12 +55,12 @@ declare global {
 }
 
 export function generateToken(payload: JWTPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  return jwt.sign(payload, JWT_SECRET!, { expiresIn: JWT_EXPIRES_IN });
 }
 
 export function verifyToken(token: string): JWTPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    return jwt.verify(token, JWT_SECRET!) as JWTPayload;
   } catch {
     return null;
   }
@@ -79,10 +103,13 @@ export function registerAuthRoutes(app: any) {
       }
 
       const passwordHash = await bcrypt.hash(password, 12);
+      const recoveryPhrase = generateRecoveryPhrase();
+      const recoveryPhraseHash = await bcrypt.hash(recoveryPhrase.toLowerCase(), 12);
       
       const [newUser] = await db.insert(users).values({
         email,
         passwordHash,
+        recoveryPhraseHash,
         firstName: firstName || null,
         lastName: lastName || null,
       }).returning();
@@ -97,6 +124,7 @@ export function registerAuthRoutes(app: any) {
           lastName: newUser.lastName,
         },
         token,
+        recoveryPhrase,
       });
     } catch (error) {
       res.status(500).json({ message: "Erreur lors de l'inscription" });
@@ -164,5 +192,33 @@ export function registerAuthRoutes(app: any) {
 
   app.post("/api/auth/logout", (_req: Request, res: Response) => {
     res.json({ success: true });
+  });
+
+  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+    try {
+      const validation = resetPasswordSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0].message });
+      }
+
+      const { email, recoveryPhrase, newPassword } = validation.data;
+
+      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      if (!user || !user.recoveryPhraseHash) {
+        return res.status(401).json({ message: "Email ou phrase de récupération incorrect" });
+      }
+
+      const isValidPhrase = await bcrypt.compare(recoveryPhrase.toLowerCase().trim(), user.recoveryPhraseHash);
+      if (!isValidPhrase) {
+        return res.status(401).json({ message: "Email ou phrase de récupération incorrect" });
+      }
+
+      const newPasswordHash = await bcrypt.hash(newPassword, 12);
+      await db.update(users).set({ passwordHash: newPasswordHash }).where(eq(users.id, user.id));
+
+      res.json({ success: true, message: "Mot de passe réinitialisé avec succès" });
+    } catch (error) {
+      res.status(500).json({ message: "Erreur lors de la réinitialisation" });
+    }
   });
 }

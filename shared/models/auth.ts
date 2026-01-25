@@ -17,6 +17,7 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique().notNull(),
   passwordHash: text("password_hash"),
+  recoveryPhraseHash: text("recovery_phrase_hash"),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
@@ -42,7 +43,14 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Mot de passe requis"),
 });
 
+export const resetPasswordSchema = z.object({
+  email: z.string().email("Email invalide"),
+  recoveryPhrase: z.string().min(1, "Phrase de récupération requise"),
+  newPassword: z.string().min(8, "Le mot de passe doit contenir au moins 8 caractères"),
+});
+
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
