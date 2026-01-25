@@ -1,14 +1,15 @@
-# WhatsBook - WhatsApp Booking Assistant
+# ChatSlot - WhatsApp Booking Assistant
 
 ## Overview
 
-WhatsBook is a SaaS application that enables service providers (hairdressers, beauticians, etc.) to automate appointment bookings through WhatsApp. The platform provides an intelligent WhatsApp bot that handles client inquiries, automatic appointment scheduling, reminder notifications, and a shared blacklist system for problematic clients.
+ChatSlot is a SaaS application that enables service providers to automate appointment bookings through WhatsApp. The platform provides an intelligent WhatsApp bot that handles client inquiries, automatic appointment scheduling, reminder notifications, and a shared safety system for problematic clients.
 
 The application follows a monorepo structure with a React frontend, Express backend, PostgreSQL database, and WhatsApp Web integration for messaging capabilities.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Matrix green #39FF14 accents)
 
 ## System Architecture
 
@@ -17,14 +18,14 @@ Preferred communication style: Simple, everyday language.
 - **Routing**: Wouter (lightweight alternative to React Router)
 - **State Management**: TanStack Query (React Query) for server state
 - **UI Components**: shadcn/ui component library built on Radix UI primitives
-- **Styling**: Tailwind CSS with custom WhatsApp-inspired green theme
+- **Styling**: Tailwind CSS with custom neon green theme
 - **Form Handling**: React Hook Form with Zod validation
-- **Build Tool**: Vite with custom plugins for Replit integration
+- **Build Tool**: Vite
 
 ### Backend Architecture
 - **Framework**: Express.js with TypeScript
-- **Authentication**: Replit Auth (OpenID Connect) with Passport.js
-- **Session Management**: express-session with PostgreSQL store (connect-pg-simple)
+- **Authentication**: Custom Email/Password with JWT tokens
+- **Security**: Helmet middleware for HTTP headers protection
 - **Database ORM**: Drizzle ORM with PostgreSQL dialect
 - **WhatsApp Integration**: whatsapp-web.js library with Puppeteer
 - **Scheduled Tasks**: node-cron for appointment reminders
@@ -33,45 +34,44 @@ Preferred communication style: Simple, everyday language.
 - **Database**: PostgreSQL
 - **Schema Management**: Drizzle Kit for migrations
 - **Key Tables**:
-  - `users` / `sessions`: Replit Auth user data and sessions
+  - `users` / `sessions`: User authentication data
   - `provider_profiles`: Extended business info for service providers
   - `services`: Service offerings with pricing and duration
   - `business_hours`: Weekly schedule configuration
   - `appointments`: Client bookings with status tracking
   - `blocked_slots`: Manual time blocking
   - `blacklist`: Shared problematic client registry
-  - `message_log`: WhatsApp conversation history
+  - `safety_blacklist`: Dangerous clients safety system
 
 ### API Structure
 - RESTful API under `/api` prefix
-- Protected routes using `isAuthenticated` middleware
+- JWT-protected routes using `isAuthenticated` middleware
 - Provider-scoped data access based on authenticated user
 
 ### Key Features
 1. **WhatsApp Bot**: Automated responses to client messages, appointment booking flow
 2. **Appointment Management**: Calendar view, booking, cancellation, status updates
 3. **Reminder System**: Automated 1-hour pre-appointment notifications via WhatsApp
-4. **Shared Blacklist**: Cross-provider protection against problematic clients
+4. **Shared Safety System**: Cross-provider protection against problematic/dangerous clients
 5. **Business Hours**: Configurable weekly availability schedule
-6. **Subscription Management**: Trial/active/expired subscription status tracking
+6. **Availability Modes**: ACTIVE (full bot), AWAY (single auto-reply), GHOST (silent)
+7. **Anti-ban Censorship**: Automatic text obfuscation for sensitive content
 
 ## External Dependencies
 
 ### Third-Party Services
-- **Replit Auth**: OpenID Connect authentication provider (via Replit platform)
-- **PostgreSQL**: Database provisioned through Replit
+- **PostgreSQL**: Database
 - **WhatsApp Web**: Client-side WhatsApp automation via whatsapp-web.js
 
 ### Key NPM Packages
 - `whatsapp-web.js`: WhatsApp Web client automation
 - `qrcode`: QR code generation for WhatsApp pairing
 - `drizzle-orm` / `drizzle-kit`: Database ORM and migrations
-- `passport` / `openid-client`: Authentication handling
+- `bcryptjs` / `jsonwebtoken`: Authentication
+- `helmet`: Security middleware
 - `node-cron`: Scheduled task execution
 - `date-fns`: Date manipulation utilities
 
 ### Environment Variables Required
 - `DATABASE_URL`: PostgreSQL connection string
-- `SESSION_SECRET`: Session encryption key
-- `ISSUER_URL`: Replit Auth OIDC issuer (defaults to https://replit.com/oidc)
-- `REPL_ID`: Replit environment identifier
+- `JWT_SECRET` or `SESSION_SECRET`: JWT token signing key
