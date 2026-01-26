@@ -123,6 +123,9 @@ export interface IStorage {
   reportDangerousClient(phone: string, reportedBy: string, reason?: string): Promise<SafetyBlacklistEntry>;
   isDangerousClient(phone: string): Promise<boolean>;
   getDangerousClientsFilteredCount(): Promise<number>;
+  
+  // Stripe Integration
+  getProviderProfileByStripeCustomerId(customerId: string): Promise<ProviderProfile | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -632,6 +635,12 @@ export class DatabaseStorage implements IStorage {
       .from(safetyBlacklist)
       .where(gte(safetyBlacklist.reportCount, 2));
     return result[0]?.count || 0;
+  }
+
+  async getProviderProfileByStripeCustomerId(customerId: string): Promise<ProviderProfile | undefined> {
+    const [profile] = await db.select().from(providerProfiles)
+      .where(eq(providerProfiles.stripeCustomerId, customerId));
+    return profile;
   }
 }
 

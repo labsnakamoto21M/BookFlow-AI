@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { registerAuthRoutes, isAuthenticated } from "./auth";
 import { whatsappManager } from "./whatsapp";
 import { startReminderService } from "./reminder";
+import { getUncachableStripeClient } from "./stripeClient";
 import { z } from "zod";
 import { 
   insertServiceSchema, 
@@ -694,6 +695,32 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching extended stats:", error);
       res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
+  // Stripe Customer Portal Session
+  app.post("/api/stripe/customer-portal", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      
+      if (!profile.stripeCustomerId) {
+        return res.status(400).json({ message: "Aucun abonnement Stripe associe" });
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.get('host');
+      const returnUrl = `${protocol}://${host}/abonnement`;
+
+      const session = await stripe.billingPortal.sessions.create({
+        customer: profile.stripeCustomerId,
+        return_url: returnUrl,
+      });
+
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Error creating customer portal session:", error);
+      res.status(500).json({ message: "Erreur lors de la creation de la session" });
     }
   });
 
