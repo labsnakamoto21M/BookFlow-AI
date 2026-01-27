@@ -709,6 +709,17 @@ export class DatabaseStorage implements IStorage {
         .where(eq(providerProfiles.id, profile.id));
     }
   }
+
+  async deactivateSubscription(userId: string): Promise<void> {
+    const [profile] = await db.select().from(providerProfiles)
+      .where(eq(providerProfiles.userId, userId));
+    
+    if (profile) {
+      await db.update(providerProfiles)
+        .set({ subscriptionStatus: 'inactive', updatedAt: new Date() })
+        .where(eq(providerProfiles.id, profile.id));
+    }
+  }
   
   async deleteUserCascade(userId: string): Promise<void> {
     // Get provider profile

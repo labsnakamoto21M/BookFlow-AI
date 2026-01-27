@@ -25,22 +25,24 @@ import {
   Activity,
   Key,
   Zap,
+  ZapOff,
   Trash2,
   RefreshCw,
   AlertTriangle,
   Terminal,
+  Search,
 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
-const ADMIN_RED = "#FF3131";
-const ADMIN_RED_80 = "#FF3131CC";
-const ADMIN_RED_60 = "#FF313199";
-const ADMIN_RED_40 = "#FF313166";
-const ADMIN_RED_30 = "#FF31314D";
-const ADMIN_RED_20 = "#FF313133";
-const ADMIN_RED_10 = "#FF31311A";
-const ADMIN_RED_05 = "#FF31310D";
+const ADMIN_WHITE = "#FFFFFF";
+const ADMIN_WHITE_80 = "#FFFFFFCC";
+const ADMIN_WHITE_60 = "#FFFFFF99";
+const ADMIN_WHITE_40 = "#FFFFFF66";
+const ADMIN_WHITE_30 = "#FFFFFF4D";
+const ADMIN_WHITE_20 = "#FFFFFF33";
+const ADMIN_WHITE_10 = "#FFFFFF1A";
+const ADMIN_WHITE_05 = "#FFFFFF0D";
 
 interface AdminUser {
   id: string;
@@ -87,7 +89,9 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [deleteUserOpen, setDeleteUserOpen] = useState(false);
+  const [deactivateUserOpen, setDeactivateUserOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: isAdmin, isLoading: checkingAdmin } = useQuery<{ isAdmin: boolean }>({
     queryKey: ["/api/admin/check"],
@@ -140,6 +144,23 @@ export default function AdminPage() {
     },
   });
 
+  const deactivateSubscriptionMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await apiRequest("POST", `/api/admin/users/${userId}/deactivate-subscription`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Abonnement désactivé", description: "L'abonnement a été désactivé." });
+      setDeactivateUserOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/activity-logs"] });
+    },
+    onError: () => {
+      toast({ title: "Erreur", description: "Impossible de désactiver l'abonnement.", variant: "destructive" });
+    },
+  });
+
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: string) => {
       const response = await apiRequest("DELETE", `/api/admin/users/${userId}`);
@@ -157,10 +178,17 @@ export default function AdminPage() {
     },
   });
 
+  const filteredUsers = users?.filter((u) =>
+    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (u.firstName?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+    (u.lastName?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+    (u.profile?.businessName?.toLowerCase() || "").includes(searchQuery.toLowerCase())
+  );
+
   if (checkingAdmin) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="font-mono animate-pulse" style={{ color: ADMIN_RED }}>INITIALIZING COMMAND CENTER...</div>
+        <div className="font-mono animate-pulse" style={{ color: ADMIN_WHITE }}>INITIALIZING COMMAND CENTER...</div>
       </div>
     );
   }
@@ -169,13 +197,13 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center font-mono">
-          <AlertTriangle className="h-16 w-16 mx-auto mb-4" style={{ color: ADMIN_RED }} />
-          <div className="text-2xl mb-2" style={{ color: ADMIN_RED }}>ACCESS DENIED</div>
-          <div className="text-sm" style={{ color: ADMIN_RED_60 }}>ADMIN PRIVILEGES REQUIRED</div>
+          <AlertTriangle className="h-16 w-16 mx-auto mb-4" style={{ color: ADMIN_WHITE }} />
+          <div className="text-2xl mb-2" style={{ color: ADMIN_WHITE }}>ACCESS DENIED</div>
+          <div className="text-sm" style={{ color: ADMIN_WHITE_60 }}>ADMIN PRIVILEGES REQUIRED</div>
           <Button 
             variant="outline" 
             className="mt-6"
-            style={{ borderColor: ADMIN_RED_30, color: ADMIN_RED }}
+            style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}
             onClick={() => setLocation("/")}
             data-testid="button-back-home"
           >
@@ -194,7 +222,9 @@ export default function AdminPage() {
       case "trial":
         return <Badge className="font-mono text-xs" style={{ backgroundColor: "#FFD70033", color: "#FFD700CC", borderColor: "#FFD7004D" }}>TRIAL</Badge>;
       case "cancelled":
-        return <Badge className="font-mono text-xs" style={{ backgroundColor: ADMIN_RED_20, color: ADMIN_RED_80, borderColor: ADMIN_RED_30 }}>CANCELLED</Badge>;
+        return <Badge className="font-mono text-xs" style={{ backgroundColor: "#FF313133", color: "#FF3131CC", borderColor: "#FF31314D" }}>CANCELLED</Badge>;
+      case "inactive":
+        return <Badge className="font-mono text-xs" style={{ backgroundColor: "#FF313133", color: "#FF3131CC", borderColor: "#FF31314D" }}>INACTIVE</Badge>;
       default:
         return <Badge variant="outline" className="border-gray-500 text-gray-500 font-mono text-xs">{status.toUpperCase()}</Badge>;
     }
@@ -204,73 +234,74 @@ export default function AdminPage() {
     if (eventType.includes("USER")) return <Users className="h-3 w-3" />;
     if (eventType.includes("PASSWORD")) return <Key className="h-3 w-3" />;
     if (eventType.includes("ACTIVATE")) return <Zap className="h-3 w-3" />;
+    if (eventType.includes("DEACTIVATE")) return <ZapOff className="h-3 w-3" />;
     if (eventType.includes("DELETE")) return <Trash2 className="h-3 w-3" />;
     if (eventType.includes("THREAT") || eventType.includes("SECURITY")) return <Shield className="h-3 w-3" />;
     return <Activity className="h-3 w-3" />;
   };
 
   return (
-    <div className="min-h-screen bg-black font-mono p-6" style={{ color: ADMIN_RED }} data-testid="admin-dashboard">
+    <div className="min-h-screen bg-black font-mono p-6" style={{ color: ADMIN_WHITE }} data-testid="admin-dashboard">
       <div className="max-w-7xl mx-auto">
-        <header className="mb-8 pb-4" style={{ borderBottomColor: ADMIN_RED_20, borderBottomWidth: 1 }}>
+        <header className="mb-8 pb-4" style={{ borderBottomColor: ADMIN_WHITE_20, borderBottomWidth: 1 }}>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-wider" style={{ color: ADMIN_RED }}>COMMAND CENTER</h1>
-              <p className="text-sm mt-1" style={{ color: ADMIN_RED_60 }}>SYSTEM ADMINISTRATOR: {user?.email}</p>
+              <h1 className="text-3xl font-bold tracking-wider" style={{ color: ADMIN_WHITE }}>COMMAND CENTER</h1>
+              <p className="text-sm mt-1" style={{ color: ADMIN_WHITE_60 }}>SYSTEM ADMINISTRATOR: {user?.email}</p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: ADMIN_RED }} />
-              <span className="text-xs" style={{ color: ADMIN_RED_80 }}>SYSTEM ONLINE</span>
+              <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: "#39FF14" }} />
+              <span className="text-xs" style={{ color: ADMIN_WHITE_80 }}>SYSTEM ONLINE</span>
             </div>
           </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <Card className="bg-black transition-colors" style={{ borderColor: ADMIN_RED_30 }}>
+          <Card className="bg-black transition-colors" style={{ borderColor: ADMIN_WHITE_30 }}>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_RED_80 }}>TOTAL_USERS</CardTitle>
-              <Users className="h-4 w-4" style={{ color: ADMIN_RED }} />
+              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_WHITE_80 }}>TOTAL_USERS</CardTitle>
+              <Users className="h-4 w-4" style={{ color: ADMIN_WHITE }} />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" style={{ color: ADMIN_RED }} data-testid="stat-total-users">
-                {loadingStats ? <Skeleton className="h-8 w-16" style={{ backgroundColor: ADMIN_RED_20 }} /> : stats?.totalUsers || 0}
+              <div className="text-2xl font-bold" style={{ color: ADMIN_WHITE }} data-testid="stat-total-users">
+                {loadingStats ? <Skeleton className="h-8 w-16" style={{ backgroundColor: ADMIN_WHITE_20 }} /> : stats?.totalUsers || 0}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-black transition-colors" style={{ borderColor: ADMIN_RED_30 }}>
+          <Card className="bg-black transition-colors" style={{ borderColor: ADMIN_WHITE_30 }}>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_RED_80 }}>ACTIVE_SUBS</CardTitle>
-              <Zap className="h-4 w-4" style={{ color: ADMIN_RED }} />
+              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_WHITE_80 }}>ACTIVE_SUBS</CardTitle>
+              <Zap className="h-4 w-4" style={{ color: ADMIN_WHITE }} />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" style={{ color: ADMIN_RED }} data-testid="stat-active-subs">
-                {loadingStats ? <Skeleton className="h-8 w-16" style={{ backgroundColor: ADMIN_RED_20 }} /> : stats?.activeSubscriptions || 0}
+              <div className="text-2xl font-bold" style={{ color: ADMIN_WHITE }} data-testid="stat-active-subs">
+                {loadingStats ? <Skeleton className="h-8 w-16" style={{ backgroundColor: ADMIN_WHITE_20 }} /> : stats?.activeSubscriptions || 0}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-black transition-colors" style={{ borderColor: ADMIN_RED_30 }}>
+          <Card className="bg-black transition-colors" style={{ borderColor: ADMIN_WHITE_30 }}>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_RED_80 }}>TOTAL_RDV</CardTitle>
-              <Calendar className="h-4 w-4" style={{ color: ADMIN_RED }} />
+              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_WHITE_80 }}>TOTAL_RDV</CardTitle>
+              <Calendar className="h-4 w-4" style={{ color: ADMIN_WHITE }} />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" style={{ color: ADMIN_RED }} data-testid="stat-total-rdv">
-                {loadingStats ? <Skeleton className="h-8 w-16" style={{ backgroundColor: ADMIN_RED_20 }} /> : stats?.totalAppointments || 0}
+              <div className="text-2xl font-bold" style={{ color: ADMIN_WHITE }} data-testid="stat-total-rdv">
+                {loadingStats ? <Skeleton className="h-8 w-16" style={{ backgroundColor: ADMIN_WHITE_20 }} /> : stats?.totalAppointments || 0}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-black transition-colors" style={{ borderColor: ADMIN_RED_30 }}>
+          <Card className="bg-black transition-colors" style={{ borderColor: ADMIN_WHITE_30 }}>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_RED_80 }}>MONTHLY_REV</CardTitle>
-              <DollarSign className="h-4 w-4" style={{ color: ADMIN_RED }} />
+              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_WHITE_80 }}>MONTHLY_REV</CardTitle>
+              <DollarSign className="h-4 w-4" style={{ color: ADMIN_WHITE }} />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" style={{ color: ADMIN_RED }} data-testid="stat-monthly-revenue">
+              <div className="text-2xl font-bold" style={{ color: ADMIN_WHITE }} data-testid="stat-monthly-revenue">
                 {loadingStats ? (
-                  <Skeleton className="h-8 w-24" style={{ backgroundColor: ADMIN_RED_20 }} />
+                  <Skeleton className="h-8 w-24" style={{ backgroundColor: ADMIN_WHITE_20 }} />
                 ) : (
                   `€${((stats?.estimatedMonthlyRevenue || 0) / 100).toFixed(2)}`
                 )}
@@ -280,64 +311,64 @@ export default function AdminPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-          <Card className="bg-black" style={{ borderColor: ADMIN_RED_30 }}>
+          <Card className="bg-black" style={{ borderColor: ADMIN_WHITE_30 }}>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_RED_80 }}>SECURITY_NETWORK</CardTitle>
-              <Shield className="h-4 w-4" style={{ color: ADMIN_RED }} />
+              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_WHITE_80 }}>SECURITY_NETWORK</CardTitle>
+              <Shield className="h-4 w-4" style={{ color: ADMIN_WHITE }} />
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-xs" style={{ color: ADMIN_RED_60 }}>BLACKLIST_ENTRIES</span>
-                <span style={{ color: ADMIN_RED_80 }} data-testid="stat-blacklist">{stats?.safetyBlacklistCount || 0}</span>
+                <span className="text-xs" style={{ color: ADMIN_WHITE_60 }}>BLACKLIST_ENTRIES</span>
+                <span style={{ color: ADMIN_WHITE_80 }} data-testid="stat-blacklist">{stats?.safetyBlacklistCount || 0}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-xs" style={{ color: ADMIN_RED_60 }}>TOTAL_NO_SHOWS</span>
-                <span style={{ color: ADMIN_RED_80 }} data-testid="stat-noshows">{stats?.totalNoShows || 0}</span>
+                <span className="text-xs" style={{ color: ADMIN_WHITE_60 }}>TOTAL_NO_SHOWS</span>
+                <span style={{ color: ADMIN_WHITE_80 }} data-testid="stat-noshows">{stats?.totalNoShows || 0}</span>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-black" style={{ borderColor: ADMIN_RED_30 }}>
+          <Card className="bg-black" style={{ borderColor: ADMIN_WHITE_30 }}>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_RED_80 }}>BOOKING_SPLIT</CardTitle>
-              <Activity className="h-4 w-4" style={{ color: ADMIN_RED }} />
+              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_WHITE_80 }}>BOOKING_SPLIT</CardTitle>
+              <Activity className="h-4 w-4" style={{ color: ADMIN_WHITE }} />
             </CardHeader>
             <CardContent className="space-y-2">
               {stats?.incallPercentage === -1 ? (
-                <div className="text-xs" style={{ color: ADMIN_RED_40 }}>
+                <div className="text-xs" style={{ color: ADMIN_WHITE_40 }}>
                   DATA_NOT_TRACKED<br/>
                   <span className="text-[10px]">Requires appointment type field</span>
                 </div>
               ) : (
                 <>
                   <div className="flex justify-between">
-                    <span className="text-xs" style={{ color: ADMIN_RED_60 }}>INCALL (PRIVE)</span>
-                    <span data-testid="stat-incall" style={{ color: ADMIN_RED_80 }}>{stats?.incallPercentage || 0}%</span>
+                    <span className="text-xs" style={{ color: ADMIN_WHITE_60 }}>INCALL (PRIVE)</span>
+                    <span data-testid="stat-incall" style={{ color: ADMIN_WHITE_80 }}>{stats?.incallPercentage || 0}%</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-xs" style={{ color: ADMIN_RED_60 }}>OUTCALL (ESCORT)</span>
-                    <span data-testid="stat-outcall" style={{ color: ADMIN_RED_80 }}>{stats?.outcallPercentage || 0}%</span>
+                    <span className="text-xs" style={{ color: ADMIN_WHITE_60 }}>OUTCALL (ESCORT)</span>
+                    <span data-testid="stat-outcall" style={{ color: ADMIN_WHITE_80 }}>{stats?.outcallPercentage || 0}%</span>
                   </div>
                 </>
               )}
             </CardContent>
           </Card>
 
-          <Card className="bg-black" style={{ borderColor: ADMIN_RED_30 }}>
+          <Card className="bg-black" style={{ borderColor: ADMIN_WHITE_30 }}>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_RED_80 }}>TOP_EXTRAS</CardTitle>
-              <Zap className="h-4 w-4" style={{ color: ADMIN_RED }} />
+              <CardTitle className="text-sm font-mono" style={{ color: ADMIN_WHITE_80 }}>TOP_EXTRAS</CardTitle>
+              <Zap className="h-4 w-4" style={{ color: ADMIN_WHITE }} />
             </CardHeader>
             <CardContent className="space-y-1">
               {stats?.topExtras?.length ? (
                 stats.topExtras.map((extra, i) => (
                   <div key={i} className="flex justify-between text-xs">
-                    <span className="truncate max-w-[150px]" style={{ color: ADMIN_RED_60 }}>{extra.name}</span>
-                    <span style={{ color: ADMIN_RED_80 }}>{extra.count}</span>
+                    <span className="truncate max-w-[150px]" style={{ color: ADMIN_WHITE_60 }}>{extra.name}</span>
+                    <span style={{ color: ADMIN_WHITE_80 }}>{extra.count}</span>
                   </div>
                 ))
               ) : (
-                <span className="text-xs" style={{ color: ADMIN_RED_40 }}>NO_DATA</span>
+                <span className="text-xs" style={{ color: ADMIN_WHITE_40 }}>NO_DATA</span>
               )}
             </CardContent>
           </Card>
@@ -345,18 +376,31 @@ export default function AdminPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <Card className="bg-black" style={{ borderColor: ADMIN_RED_30 }}>
+            <Card className="bg-black" style={{ borderColor: ADMIN_WHITE_30 }}>
               <CardHeader>
-                <CardTitle className="font-mono flex items-center gap-2" style={{ color: ADMIN_RED }}>
-                  <Users className="h-5 w-5" />
-                  USER_REGISTRY
-                </CardTitle>
+                <div className="flex items-center justify-between gap-4">
+                  <CardTitle className="font-mono flex items-center gap-2" style={{ color: ADMIN_WHITE }}>
+                    <Users className="h-5 w-5" />
+                    USER_REGISTRY
+                  </CardTitle>
+                  <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" style={{ color: ADMIN_WHITE_40 }} />
+                    <Input
+                      placeholder="Rechercher par email..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 bg-black font-mono text-sm"
+                      style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}
+                      data-testid="input-search-users"
+                    />
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs" data-testid="users-table">
                     <thead>
-                      <tr style={{ borderBottomColor: ADMIN_RED_20, borderBottomWidth: 1, color: ADMIN_RED_60 }}>
+                      <tr style={{ borderBottomColor: ADMIN_WHITE_20, borderBottomWidth: 1, color: ADMIN_WHITE_60 }}>
                         <th className="text-left py-2 px-2">EMAIL</th>
                         <th className="text-left py-2 px-2">JOINED</th>
                         <th className="text-left py-2 px-2">STATUS</th>
@@ -367,65 +411,86 @@ export default function AdminPage() {
                     <tbody>
                       {loadingUsers ? (
                         Array.from({ length: 5 }).map((_, i) => (
-                          <tr key={i} style={{ borderBottomColor: ADMIN_RED_10, borderBottomWidth: 1 }}>
+                          <tr key={i} style={{ borderBottomColor: ADMIN_WHITE_10, borderBottomWidth: 1 }}>
                             <td colSpan={5} className="py-3">
-                              <Skeleton className="h-4 w-full" style={{ backgroundColor: ADMIN_RED_10 }} />
+                              <Skeleton className="h-4 w-full" style={{ backgroundColor: ADMIN_WHITE_10 }} />
                             </td>
                           </tr>
                         ))
-                      ) : users?.length ? (
-                        users.map((u) => (
-                          <tr key={u.id} style={{ borderBottomColor: ADMIN_RED_10, borderBottomWidth: 1 }}>
-                            <td className="py-2 px-2" style={{ color: ADMIN_RED_80 }} data-testid={`user-email-${u.id}`}>
+                      ) : filteredUsers?.length ? (
+                        filteredUsers.map((u) => (
+                          <tr key={u.id} style={{ borderBottomColor: ADMIN_WHITE_10, borderBottomWidth: 1 }}>
+                            <td className="py-2 px-2" style={{ color: ADMIN_WHITE_80 }} data-testid={`user-email-${u.id}`}>
                               {u.email}
                               {u.role === "ADMIN" && (
-                                <Badge className="ml-2 text-[10px]" style={{ backgroundColor: ADMIN_RED_20, color: ADMIN_RED_80, borderColor: ADMIN_RED }}>ADMIN</Badge>
+                                <Badge className="ml-2 text-[10px]" style={{ backgroundColor: ADMIN_WHITE_20, color: ADMIN_WHITE_80, borderColor: ADMIN_WHITE }}>ADMIN</Badge>
                               )}
                             </td>
-                            <td className="py-2 px-2" style={{ color: ADMIN_RED_60 }}>
+                            <td className="py-2 px-2" style={{ color: ADMIN_WHITE_60 }}>
                               {format(new Date(u.createdAt), "dd/MM/yy", { locale: fr })}
                             </td>
                             <td className="py-2 px-2">
                               {getStatusBadge(u.profile?.subscriptionStatus)}
                             </td>
-                            <td className="py-2 px-2" style={{ color: ADMIN_RED_80 }}>{u.appointmentCount}</td>
+                            <td className="py-2 px-2" style={{ color: ADMIN_WHITE_80 }}>{u.appointmentCount}</td>
                             <td className="py-2 px-2 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 <Button
                                   size="sm"
                                   variant="ghost"
                                   className="h-7 px-2"
-                                  style={{ color: ADMIN_RED }}
+                                  style={{ color: ADMIN_WHITE }}
                                   onClick={() => {
                                     setSelectedUser(u);
                                     setResetPasswordOpen(true);
                                   }}
                                   data-testid={`button-reset-pwd-${u.id}`}
+                                  title="Reset password"
                                 >
                                   <Key className="h-3 w-3" />
                                 </Button>
+                                {u.profile?.subscriptionStatus === "active" ? (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2"
+                                    style={{ color: "#FF3131" }}
+                                    onClick={() => {
+                                      setSelectedUser(u);
+                                      setDeactivateUserOpen(true);
+                                    }}
+                                    disabled={deactivateSubscriptionMutation.isPending}
+                                    data-testid={`button-deactivate-${u.id}`}
+                                    title="Deactivate subscription"
+                                  >
+                                    <ZapOff className="h-3 w-3" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2"
+                                    style={{ color: "#39FF14" }}
+                                    onClick={() => forceActivateMutation.mutate(u.id)}
+                                    disabled={forceActivateMutation.isPending}
+                                    data-testid={`button-force-activate-${u.id}`}
+                                    title="Activate subscription"
+                                  >
+                                    <Zap className="h-3 w-3" />
+                                  </Button>
+                                )}
                                 <Button
                                   size="sm"
                                   variant="ghost"
                                   className="h-7 px-2"
-                                  style={{ color: "#39FF14" }}
-                                  onClick={() => forceActivateMutation.mutate(u.id)}
-                                  disabled={forceActivateMutation.isPending || u.profile?.subscriptionStatus === "active"}
-                                  data-testid={`button-force-activate-${u.id}`}
-                                >
-                                  <Zap className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 px-2"
-                                  style={{ color: ADMIN_RED }}
+                                  style={{ color: "#FF3131" }}
                                   onClick={() => {
                                     setSelectedUser(u);
                                     setDeleteUserOpen(true);
                                   }}
                                   disabled={u.role === "ADMIN"}
                                   data-testid={`button-delete-user-${u.id}`}
+                                  title="Delete user"
                                 >
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
@@ -435,8 +500,8 @@ export default function AdminPage() {
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={5} className="py-4 text-center" style={{ color: ADMIN_RED_40 }}>
-                            NO_USERS_FOUND
+                          <td colSpan={5} className="py-4 text-center" style={{ color: ADMIN_WHITE_40 }}>
+                            {searchQuery ? "AUCUN_RESULTAT" : "NO_USERS_FOUND"}
                           </td>
                         </tr>
                       )}
@@ -448,9 +513,9 @@ export default function AdminPage() {
           </div>
 
           <div>
-            <Card className="bg-black" style={{ borderColor: ADMIN_RED_30 }}>
+            <Card className="bg-black" style={{ borderColor: ADMIN_WHITE_30 }}>
               <CardHeader>
-                <CardTitle className="font-mono flex items-center gap-2" style={{ color: ADMIN_RED }}>
+                <CardTitle className="font-mono flex items-center gap-2" style={{ color: ADMIN_WHITE }}>
                   <Terminal className="h-5 w-5" />
                   LIVE_ACTIVITY
                 </CardTitle>
@@ -459,27 +524,27 @@ export default function AdminPage() {
                 <div className="space-y-2 max-h-[400px] overflow-y-auto" data-testid="activity-logs">
                   {loadingLogs ? (
                     Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-12 w-full" style={{ backgroundColor: ADMIN_RED_10 }} />
+                      <Skeleton key={i} className="h-12 w-full" style={{ backgroundColor: ADMIN_WHITE_10 }} />
                     ))
                   ) : activityLogs?.length ? (
                     activityLogs.map((log) => (
                       <div
                         key={log.id}
                         className="p-2 rounded text-xs"
-                        style={{ borderColor: ADMIN_RED_20, borderWidth: 1, backgroundColor: ADMIN_RED_05 }}
+                        style={{ borderColor: ADMIN_WHITE_20, borderWidth: 1, backgroundColor: ADMIN_WHITE_05 }}
                       >
-                        <div className="flex items-center gap-2 mb-1" style={{ color: ADMIN_RED_80 }}>
+                        <div className="flex items-center gap-2 mb-1" style={{ color: ADMIN_WHITE_80 }}>
                           {getEventIcon(log.eventType)}
                           <span className="font-semibold">{log.eventType}</span>
                         </div>
-                        <div className="truncate" style={{ color: ADMIN_RED_60 }}>{log.description}</div>
-                        <div className="text-[10px] mt-1" style={{ color: ADMIN_RED_40 }}>
+                        <div className="truncate" style={{ color: ADMIN_WHITE_60 }}>{log.description}</div>
+                        <div className="text-[10px] mt-1" style={{ color: ADMIN_WHITE_40 }}>
                           {format(new Date(log.createdAt), "dd/MM HH:mm:ss")}
                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="text-center py-4" style={{ color: ADMIN_RED_40 }}>
+                    <div className="text-center py-4" style={{ color: ADMIN_WHITE_40 }}>
                       NO_ACTIVITY_LOGGED
                     </div>
                   )}
@@ -488,7 +553,7 @@ export default function AdminPage() {
                   variant="outline"
                   size="sm"
                   className="w-full mt-4"
-                  style={{ borderColor: ADMIN_RED_30, color: ADMIN_RED }}
+                  style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}
                   onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/activity-logs"] })}
                   data-testid="button-refresh-logs"
                 >
@@ -501,10 +566,10 @@ export default function AdminPage() {
         </div>
 
         <Dialog open={resetPasswordOpen} onOpenChange={setResetPasswordOpen}>
-          <DialogContent className="bg-black font-mono" style={{ borderColor: ADMIN_RED_30, color: ADMIN_RED }}>
+          <DialogContent className="bg-black font-mono" style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}>
             <DialogHeader>
-              <DialogTitle style={{ color: ADMIN_RED }}>RESET_PASSWORD</DialogTitle>
-              <DialogDescription style={{ color: ADMIN_RED_60 }}>
+              <DialogTitle style={{ color: ADMIN_WHITE }}>RESET_PASSWORD</DialogTitle>
+              <DialogDescription style={{ color: ADMIN_WHITE_60 }}>
                 Entrez un nouveau mot de passe pour {selectedUser?.email}
               </DialogDescription>
             </DialogHeader>
@@ -514,14 +579,14 @@ export default function AdminPage() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className="bg-black"
-              style={{ borderColor: ADMIN_RED_30, color: ADMIN_RED }}
+              style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}
               data-testid="input-new-password"
             />
             <DialogFooter>
               <Button
                 variant="outline"
                 onClick={() => setResetPasswordOpen(false)}
-                style={{ borderColor: ADMIN_RED_30, color: ADMIN_RED }}
+                style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}
                 data-testid="button-cancel-reset"
               >
                 CANCEL
@@ -533,7 +598,7 @@ export default function AdminPage() {
                   }
                 }}
                 disabled={newPassword.length < 8 || resetPasswordMutation.isPending}
-                style={{ backgroundColor: ADMIN_RED, color: "black" }}
+                style={{ backgroundColor: ADMIN_WHITE, color: "black" }}
                 data-testid="button-confirm-reset"
               >
                 {resetPasswordMutation.isPending ? "PROCESSING..." : "CONFIRM"}
@@ -542,14 +607,50 @@ export default function AdminPage() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={deleteUserOpen} onOpenChange={setDeleteUserOpen}>
-          <DialogContent className="bg-black font-mono" style={{ borderColor: ADMIN_RED_30, color: ADMIN_RED }}>
+        <Dialog open={deactivateUserOpen} onOpenChange={setDeactivateUserOpen}>
+          <DialogContent className="bg-black font-mono" style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2" style={{ color: ADMIN_RED }}>
+              <DialogTitle className="flex items-center gap-2" style={{ color: "#FF3131" }}>
+                <ZapOff className="h-5 w-5" />
+                DEACTIVATE_SUBSCRIPTION
+              </DialogTitle>
+              <DialogDescription style={{ color: ADMIN_WHITE_60 }}>
+                Voulez-vous vraiment désactiver l'abonnement de {selectedUser?.email} ? L'utilisateur n'aura plus accès au bot WhatsApp.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setDeactivateUserOpen(false)}
+                style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}
+                data-testid="button-cancel-deactivate"
+              >
+                CANCEL
+              </Button>
+              <Button
+                onClick={() => {
+                  if (selectedUser) {
+                    deactivateSubscriptionMutation.mutate(selectedUser.id);
+                  }
+                }}
+                disabled={deactivateSubscriptionMutation.isPending}
+                style={{ backgroundColor: "#FF3131", color: "white" }}
+                data-testid="button-confirm-deactivate"
+              >
+                {deactivateSubscriptionMutation.isPending ? "PROCESSING..." : "DEACTIVATE"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={deleteUserOpen} onOpenChange={setDeleteUserOpen}>
+          <DialogContent className="bg-black font-mono" style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2" style={{ color: "#FF3131" }}>
                 <AlertTriangle className="h-5 w-5" />
                 DELETE_USER
               </DialogTitle>
-              <DialogDescription style={{ color: ADMIN_RED_60 }}>
+              <DialogDescription style={{ color: ADMIN_WHITE_60 }}>
                 Cette action est irréversible. Toutes les données associées à {selectedUser?.email} seront supprimées définitivement.
               </DialogDescription>
             </DialogHeader>
@@ -557,7 +658,7 @@ export default function AdminPage() {
               <Button
                 variant="outline"
                 onClick={() => setDeleteUserOpen(false)}
-                style={{ borderColor: ADMIN_RED_30, color: ADMIN_RED }}
+                style={{ borderColor: ADMIN_WHITE_30, color: ADMIN_WHITE }}
                 data-testid="button-cancel-delete"
               >
                 CANCEL
@@ -569,7 +670,7 @@ export default function AdminPage() {
                   }
                 }}
                 disabled={deleteUserMutation.isPending}
-                style={{ backgroundColor: ADMIN_RED, color: "black" }}
+                style={{ backgroundColor: "#FF3131", color: "white" }}
                 data-testid="button-confirm-delete"
               >
                 {deleteUserMutation.isPending ? "DELETING..." : "CONFIRM_DELETE"}

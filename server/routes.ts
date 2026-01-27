@@ -865,6 +865,26 @@ export async function registerRoutes(
     }
   });
 
+  // Deactivate subscription (admin action)
+  app.post("/api/admin/users/:userId/deactivate-subscription", isAdmin, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      
+      await storage.deactivateSubscription(userId);
+      
+      // Log activity
+      await storage.logActivity("ADMIN_DEACTIVATE_SUBSCRIPTION", `Subscription deactivated for user ${userId}`, { 
+        targetUserId: userId,
+        adminId: req.user?.id 
+      });
+      
+      res.json({ success: true, message: "Abonnement désactivé avec succès" });
+    } catch (error) {
+      console.error("Error deactivating subscription:", error);
+      res.status(500).json({ message: "Erreur lors de la désactivation" });
+    }
+  });
+
   // Delete user and all related data (admin action)
   app.delete("/api/admin/users/:userId", isAdmin, async (req: any, res) => {
     try {
