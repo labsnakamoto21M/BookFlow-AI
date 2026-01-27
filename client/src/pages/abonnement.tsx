@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +16,8 @@ import {
   MessageSquare,
   Shield,
   ExternalLink,
-  Settings
+  Settings,
+  Loader2
 } from "lucide-react";
 import type { ProviderProfile } from "@shared/schema";
 
@@ -27,8 +30,56 @@ const features = [
 
 export default function AbonnementPage() {
   const { toast } = useToast();
-  const { data: profile, isLoading } = useQuery<ProviderProfile>({
+  const search = window.location.search;
+  const [, setLocation] = useLocation();
+  
+  const { data: profile, isLoading, refetch } = useQuery<ProviderProfile>({
     queryKey: ["/api/provider/profile"],
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    if (params.get('success') === 'true') {
+      toast({
+        title: "Paiement reussi!",
+        description: "Votre abonnement est maintenant actif. Bienvenue!",
+      });
+      refetch();
+      window.history.replaceState({}, '', '/abonnement');
+    } else if (params.get('cancelled') === 'true') {
+      toast({
+        title: "Paiement annule",
+        description: "Vous pouvez reessayer quand vous le souhaitez.",
+        variant: "destructive",
+      });
+      window.history.replaceState({}, '', '/abonnement');
+    } else if (params.get('error')) {
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue lors du paiement.",
+        variant: "destructive",
+      });
+      window.history.replaceState({}, '', '/abonnement');
+    }
+  }, [search, toast, refetch]);
+
+  const checkoutMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/stripe/create-checkout-session");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de creer la session de paiement",
+        variant: "destructive",
+      });
+    },
   });
 
   const customerPortalMutation = useMutation({
@@ -63,6 +114,10 @@ export default function AbonnementPage() {
       default:
         return <Badge variant="secondary">Inconnu</Badge>;
     }
+  };
+
+  const handleSubscribe = () => {
+    checkoutMutation.mutate();
   };
 
   const handleManageSubscription = () => {
@@ -111,9 +166,19 @@ export default function AbonnementPage() {
                   Vous beneficiez de 14 jours d'essai gratuit avec acces a toutes les fonctionnalites.
                 </p>
               </div>
-              <Button size="lg" className="w-full sm:w-auto" data-testid="button-subscribe">
-                <CreditCard className="h-4 w-4 mr-2" />
-                S'abonner - 29E/mois
+              <Button 
+                size="lg" 
+                className="w-full sm:w-auto" 
+                onClick={handleSubscribe}
+                disabled={checkoutMutation.isPending}
+                data-testid="button-subscribe"
+              >
+                {checkoutMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CreditCard className="h-4 w-4 mr-2" />
+                )}
+                {checkoutMutation.isPending ? "Redirection..." : "S'abonner - 29E/mois"}
               </Button>
             </>
           ) : profile?.subscriptionStatus === "active" ? (
@@ -150,9 +215,19 @@ export default function AbonnementPage() {
                   Votre abonnement a expire. Renouvelez pour continuer a utiliser ChatSlot.
                 </p>
               </div>
-              <Button size="lg" className="w-full sm:w-auto" data-testid="button-renew">
-                <CreditCard className="h-4 w-4 mr-2" />
-                Renouveler - 29E/mois
+              <Button 
+                size="lg" 
+                className="w-full sm:w-auto" 
+                onClick={handleSubscribe}
+                disabled={checkoutMutation.isPending}
+                data-testid="button-renew"
+              >
+                {checkoutMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CreditCard className="h-4 w-4 mr-2" />
+                )}
+                {checkoutMutation.isPending ? "Redirection..." : "Renouveler - 29E/mois"}
               </Button>
             </>
           )}
@@ -222,8 +297,14 @@ export default function AbonnementPage() {
             <CreditCard className="h-12 w-12 mx-auto mb-3 opacity-50" />
             <p>Aucun moyen de paiement enregistre</p>
             <p className="text-sm mt-1">Ajoutez une carte bancaire pour souscrire a l'abonnement</p>
-            <Button variant="outline" className="mt-4" data-testid="button-add-card">
-              Ajouter une carte
+            <Button 
+              variant="outline" 
+              className="mt-4" 
+              onClick={handleSubscribe}
+              disabled={checkoutMutation.isPending}
+              data-testid="button-add-card"
+            >
+              {checkoutMutation.isPending ? "Chargement..." : "Ajouter une carte"}
             </Button>
           </div>
         </CardContent>

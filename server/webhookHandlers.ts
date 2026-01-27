@@ -18,6 +18,28 @@ export class WebhookHandlers {
     try {
       const event = JSON.parse(payload.toString());
       
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const customerId = session.customer;
+        const providerId = session.metadata?.providerId;
+        
+        if (providerId) {
+          await storage.updateProviderProfile(providerId, {
+            subscriptionStatus: 'active',
+            stripeCustomerId: customerId,
+          });
+          console.log(`[Stripe Webhook] Checkout completed - activated subscription for provider ${providerId}`);
+        } else if (customerId) {
+          const profile = await storage.getProviderProfileByStripeCustomerId(customerId);
+          if (profile) {
+            await storage.updateProviderProfile(profile.id, {
+              subscriptionStatus: 'active',
+            });
+            console.log(`[Stripe Webhook] Checkout completed - activated subscription for customer ${customerId}`);
+          }
+        }
+      }
+      
       if (event.type === 'customer.subscription.deleted' || 
           event.type === 'customer.subscription.updated') {
         const subscription = event.data.object;
@@ -30,6 +52,16 @@ export class WebhookHandlers {
             subscriptionStatus: isActive ? 'active' : 'cancelled'
           });
           console.log(`[Stripe Webhook] Updated subscription status for ${customerId}: ${isActive ? 'active' : 'cancelled'}`);
+        }
+      }
+
+      if (event.type === 'invoice.payment_failed') {
+        const invoice = event.data.object;
+        const customerId = invoice.customer;
+        
+        const profile = await storage.getProviderProfileByStripeCustomerId(customerId);
+        if (profile) {
+          console.log(`[Stripe Webhook] Payment failed for customer ${customerId}`);
         }
       }
     } catch (error) {

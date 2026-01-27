@@ -724,5 +724,86 @@ export async function registerRoutes(
     }
   });
 
+  // Stripe Checkout Session - Create subscription
+  app.post("/api/stripe/create-checkout-session", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const stripe = await getUncachableStripeClient();
+      
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.get('host');
+      const baseUrl = `${protocol}://${host}`;
+
+      const priceId = process.env.STRIPE_PRICE_ID;
+      if (!priceId) {
+        return res.status(500).json({ message: "STRIPE_PRICE_ID non configure" });
+      }
+
+      let customerId = profile.stripeCustomerId;
+      
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: req.user?.email,
+          metadata: {
+            providerId: profile.id,
+            userId: profile.userId,
+          },
+        });
+        customerId = customer.id;
+        
+        await storage.updateProviderProfile(profile.id, {
+          stripeCustomerId: customerId,
+        });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        mode: 'subscription',
+        success_url: `${baseUrl}/api/stripe/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/abonnement?cancelled=true`,
+        metadata: {
+          providerId: profile.id,
+        },
+      });
+
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: "Erreur lors de la creation de la session de paiement" });
+    }
+  });
+
+  // Stripe Success - Handle successful payment redirect
+  app.get("/api/stripe/success", async (req, res) => {
+    try {
+      const sessionId = req.query.session_id as string;
+      
+      if (!sessionId) {
+        return res.redirect("/abonnement?error=missing_session");
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      
+      if (session.payment_status === 'paid' && session.metadata?.providerId) {
+        await storage.updateProviderProfile(session.metadata.providerId, {
+          subscriptionStatus: 'active',
+        });
+      }
+
+      res.redirect("/abonnement?success=true");
+    } catch (error) {
+      console.error("Error handling success redirect:", error);
+      res.redirect("/abonnement?error=payment_verification_failed");
+    }
+  });
+
   return httpServer;
 }
