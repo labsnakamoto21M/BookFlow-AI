@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db } from "./db";
-import { users, registerSchema, loginSchema, resetPasswordSchema } from "@shared/schema";
+import { users, registerSchema, loginSchema, resetPasswordSchema, activityLogs } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET;
@@ -49,6 +49,7 @@ declare global {
         email: string;
         firstName?: string | null;
         lastName?: string | null;
+        role?: string | null;
       };
     }
   }
@@ -66,7 +67,7 @@ export function verifyToken(token: string): JWTPayload | null {
   }
 }
 
-export function isAuthenticated(req: Request, res: Response, next: NextFunction) {
+export async function isAuthenticated(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
   
@@ -79,9 +80,53 @@ export function isAuthenticated(req: Request, res: Response, next: NextFunction)
     return res.status(401).json({ message: "Token invalide ou expiré" });
   }
 
+  // Fetch full user info including role from database
+  const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
+  if (!user) {
+    return res.status(401).json({ message: "Utilisateur non trouvé" });
+  }
+
   req.user = {
-    id: payload.userId,
-    email: payload.email,
+    id: user.id,
+    email: user.email!,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    role: user.role,
+  };
+
+  next();
+}
+
+export async function isAdmin(req: Request, res: Response, next: NextFunction) {
+  // First check authentication
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  
+  if (!token) {
+    return res.status(401).json({ message: "Non authentifié" });
+  }
+
+  const payload = verifyToken(token);
+  if (!payload) {
+    return res.status(401).json({ message: "Token invalide ou expiré" });
+  }
+
+  // Fetch user and check role
+  const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
+  if (!user) {
+    return res.status(401).json({ message: "Utilisateur non trouvé" });
+  }
+
+  if (user.role !== "ADMIN") {
+    return res.status(403).json({ message: "Accès refusé - Privilèges admin requis" });
+  }
+
+  req.user = {
+    id: user.id,
+    email: user.email!,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    role: user.role,
   };
 
   next();
@@ -115,6 +160,13 @@ export function registerAuthRoutes(app: any) {
       }).returning();
 
       const token = generateToken({ userId: newUser.id, email: newUser.email! });
+
+      // Log activity
+      await db.insert(activityLogs).values({
+        eventType: "NEW_USER_JOINED",
+        description: `New user registered: ${email}`,
+        metadata: { userId: newUser.id, email },
+      });
 
       res.status(201).json({
         user: {

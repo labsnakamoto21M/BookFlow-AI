@@ -12,6 +12,10 @@
   --elevate-1: rgba(57,255,20, .05);
   --elevate-2: rgba(57,255,20, .12);
 
+  /* Admin Command Center Red - #FF3131 = hsl(0, 100%, 60%) */
+  --admin-red: 0 100% 60%;
+  --admin-red-foreground: 0 0% 0%;
+
   /* Pure black background */
   --background: 0 0% 0%;
   --foreground: 60 5% 90%;

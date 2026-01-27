@@ -1,11 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { registerAuthRoutes, isAuthenticated } from "./auth";
+import { registerAuthRoutes, isAuthenticated, isAdmin } from "./auth";
 import { whatsappManager } from "./whatsapp";
 import { startReminderService } from "./reminder";
 import { getUncachableStripeClient } from "./stripeClient";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { 
   insertServiceSchema, 
   insertBlockedSlotSchema, 
@@ -803,6 +804,152 @@ export async function registerRoutes(
       console.error("Error handling success redirect:", error);
       res.redirect("/abonnement?error=payment_verification_failed");
     }
+  });
+
+  // ==================== ADMIN ROUTES ====================
+  
+  // Get all users with their profiles and stats
+  app.get("/api/admin/users", isAdmin, async (req: any, res) => {
+    try {
+      const users = await storage.getAllUsersWithProfiles();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching admin users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // Reset user password (admin action)
+  app.post("/api/admin/users/:userId/reset-password", isAdmin, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      const { newPassword } = req.body;
+      
+      if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({ message: "Le mot de passe doit contenir au moins 8 caractères" });
+      }
+      
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await storage.updateUserPassword(userId, passwordHash);
+      
+      // Log activity
+      await storage.logActivity("ADMIN_PASSWORD_RESET", `Password reset for user ${userId}`, { 
+        targetUserId: userId,
+        adminId: req.user?.id 
+      });
+      
+      res.json({ success: true, message: "Mot de passe réinitialisé avec succès" });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ message: "Erreur lors de la réinitialisation" });
+    }
+  });
+
+  // Force activate subscription (admin action)
+  app.post("/api/admin/users/:userId/force-activate", isAdmin, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      
+      await storage.forceActivateSubscription(userId);
+      
+      // Log activity
+      await storage.logActivity("ADMIN_FORCE_ACTIVATE", `Subscription force activated for user ${userId}`, { 
+        targetUserId: userId,
+        adminId: req.user?.id 
+      });
+      
+      res.json({ success: true, message: "Abonnement activé avec succès" });
+    } catch (error) {
+      console.error("Error force activating:", error);
+      res.status(500).json({ message: "Erreur lors de l'activation" });
+    }
+  });
+
+  // Delete user and all related data (admin action)
+  app.delete("/api/admin/users/:userId", isAdmin, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      
+      // Get user email before deletion for logging
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ message: "Utilisateur non trouvé" });
+      }
+      
+      await storage.deleteUserCascade(userId);
+      
+      // Log activity
+      await storage.logActivity("ADMIN_USER_DELETED", `User ${user.email} deleted`, { 
+        deletedEmail: user.email,
+        adminId: req.user?.id 
+      });
+      
+      res.json({ success: true, message: "Utilisateur supprimé avec succès" });
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ message: "Erreur lors de la suppression" });
+    }
+  });
+
+  // Get admin platform statistics
+  app.get("/api/admin/stats", isAdmin, async (req: any, res) => {
+    try {
+      const stats = await storage.getAdminStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching admin stats:", error);
+      res.status(500).json({ message: "Failed to fetch admin stats" });
+    }
+  });
+
+  // Get activity logs
+  app.get("/api/admin/activity-logs", isAdmin, async (req: any, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 10;
+      const logs = await storage.getActivityLogs(limit);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching activity logs:", error);
+      res.status(500).json({ message: "Failed to fetch activity logs" });
+    }
+  });
+
+  // Emergency admin password reset via token
+  app.post("/api/admin/emergency-reset", async (req, res) => {
+    try {
+      const { token, email, newPassword } = req.body;
+      
+      const adminResetToken = process.env.ADMIN_RESET_TOKEN;
+      if (!adminResetToken) {
+        return res.status(403).json({ message: "Emergency reset not configured" });
+      }
+      
+      if (token !== adminResetToken) {
+        return res.status(403).json({ message: "Invalid reset token" });
+      }
+      
+      if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({ message: "Le mot de passe doit contenir au moins 8 caractères" });
+      }
+      
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await storage.resetAdminPasswordByEmail(email, passwordHash);
+      
+      // Log activity
+      await storage.logActivity("EMERGENCY_ADMIN_RESET", `Emergency password reset for ${email}`, { 
+        email 
+      });
+      
+      res.json({ success: true, message: "Mot de passe admin réinitialisé" });
+    } catch (error) {
+      console.error("Error in emergency reset:", error);
+      res.status(500).json({ message: "Erreur lors de la réinitialisation" });
+    }
+  });
+
+  // Check if current user is admin
+  app.get("/api/admin/check", isAuthenticated, async (req: any, res) => {
+    res.json({ isAdmin: req.user?.role === "ADMIN" });
   });
 
   return httpServer;

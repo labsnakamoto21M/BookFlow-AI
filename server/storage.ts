@@ -12,6 +12,8 @@ import {
   serviceExtras,
   customExtras,
   safetyBlacklist,
+  users,
+  activityLogs,
   type Service, 
   type InsertService,
   type BusinessHours,
@@ -35,9 +37,12 @@ import {
   type InsertCustomExtra,
   type SafetyBlacklistEntry,
   type InsertSafetyBlacklist,
+  type User,
+  type ActivityLog,
+  type InsertActivityLog,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, sql, desc, count } from "drizzle-orm";
+import { eq, and, gte, lte, sql, desc, count, sum } from "drizzle-orm";
 
 export interface IStorage {
   // Provider Profile
@@ -641,6 +646,186 @@ export class DatabaseStorage implements IStorage {
     const [profile] = await db.select().from(providerProfiles)
       .where(eq(providerProfiles.stripeCustomerId, customerId));
     return profile;
+  }
+
+  // ==================== ADMIN METHODS ====================
+  
+  async getAllUsersWithProfiles(): Promise<any[]> {
+    const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
+    
+    const usersWithProfiles = await Promise.all(
+      allUsers.map(async (user) => {
+        const [profile] = await db.select().from(providerProfiles)
+          .where(eq(providerProfiles.userId, user.id));
+        
+        // Get appointment count for this provider
+        let appointmentCount = 0;
+        if (profile) {
+          const [result] = await db.select({ count: count() })
+            .from(appointments)
+            .where(eq(appointments.providerId, profile.id));
+          appointmentCount = result?.count || 0;
+        }
+        
+        return {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          createdAt: user.createdAt,
+          profile: profile ? {
+            id: profile.id,
+            businessName: profile.businessName,
+            subscriptionStatus: profile.subscriptionStatus,
+            whatsappConnected: profile.whatsappConnected,
+          } : null,
+          appointmentCount,
+        };
+      })
+    );
+    
+    return usersWithProfiles;
+  }
+  
+  async getUserById(userId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    return user;
+  }
+  
+  async updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+    await db.update(users)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+  
+  async forceActivateSubscription(userId: string): Promise<void> {
+    const [profile] = await db.select().from(providerProfiles)
+      .where(eq(providerProfiles.userId, userId));
+    
+    if (profile) {
+      await db.update(providerProfiles)
+        .set({ subscriptionStatus: 'active', updatedAt: new Date() })
+        .where(eq(providerProfiles.id, profile.id));
+    }
+  }
+  
+  async deleteUserCascade(userId: string): Promise<void> {
+    // Get provider profile
+    const [profile] = await db.select().from(providerProfiles)
+      .where(eq(providerProfiles.userId, userId));
+    
+    if (profile) {
+      // Delete all provider-related data
+      await db.delete(appointments).where(eq(appointments.providerId, profile.id));
+      await db.delete(services).where(eq(services.providerId, profile.id));
+      await db.delete(businessHours).where(eq(businessHours.providerId, profile.id));
+      await db.delete(blockedSlots).where(eq(blockedSlots.providerId, profile.id));
+      await db.delete(basePrices).where(eq(basePrices.providerId, profile.id));
+      await db.delete(serviceExtras).where(eq(serviceExtras.providerId, profile.id));
+      await db.delete(customExtras).where(eq(customExtras.providerId, profile.id));
+      await db.delete(providerBlocks).where(eq(providerBlocks.providerId, profile.id));
+      await db.delete(noShowReports).where(eq(noShowReports.providerId, profile.id));
+      await db.delete(providerProfiles).where(eq(providerProfiles.id, profile.id));
+    }
+    
+    // Delete user
+    await db.delete(users).where(eq(users.id, userId));
+  }
+  
+  async getAdminStats(): Promise<{
+    totalUsers: number;
+    activeSubscriptions: number;
+    totalAppointments: number;
+    confirmedAppointments: number;
+    incallPercentage: number;
+    outcallPercentage: number;
+    topExtras: Array<{ name: string; count: number }>;
+    safetyBlacklistCount: number;
+    totalNoShows: number;
+    estimatedMonthlyRevenue: number;
+  }> {
+    // Total users
+    const [usersResult] = await db.select({ count: count() }).from(users);
+    const totalUsers = usersResult?.count || 0;
+    
+    // Active subscriptions
+    const [activeResult] = await db.select({ count: count() })
+      .from(providerProfiles)
+      .where(eq(providerProfiles.subscriptionStatus, 'active'));
+    const activeSubscriptions = activeResult?.count || 0;
+    
+    // Total appointments
+    const [totalAptsResult] = await db.select({ count: count() }).from(appointments);
+    const totalAppointments = totalAptsResult?.count || 0;
+    
+    // Confirmed appointments
+    const [confirmedResult] = await db.select({ count: count() })
+      .from(appointments)
+      .where(eq(appointments.status, 'confirmed'));
+    const confirmedAppointments = confirmedResult?.count || 0;
+    
+    // Incall/Outcall stats - requires appointment type field to be added
+    // Currently returns -1 to indicate data not available
+    const incallPercentage = -1;
+    const outcallPercentage = -1;
+    
+    // Top extras (based on active extras count)
+    const allExtras = await db.select().from(serviceExtras).where(eq(serviceExtras.active, true));
+    const extraCounts: Record<string, number> = {};
+    allExtras.forEach(extra => {
+      extraCounts[extra.extraType] = (extraCounts[extra.extraType] || 0) + 1;
+    });
+    const topExtras = Object.entries(extraCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+    
+    // Safety blacklist count
+    const [safetyResult] = await db.select({ count: count() }).from(safetyBlacklist);
+    const safetyBlacklistCount = safetyResult?.count || 0;
+    
+    // Total no-shows
+    const [noShowResult] = await db.select({ count: count() }).from(noShowReports);
+    const totalNoShows = noShowResult?.count || 0;
+    
+    // Estimated monthly revenue (active subscriptions * price)
+    // Assuming subscription price from STRIPE_PRICE_ID (we'll use a default of 29.99 EUR)
+    const estimatedMonthlyRevenue = activeSubscriptions * 2999; // in cents
+    
+    return {
+      totalUsers,
+      activeSubscriptions,
+      totalAppointments,
+      confirmedAppointments,
+      incallPercentage,
+      outcallPercentage,
+      topExtras,
+      safetyBlacklistCount,
+      totalNoShows,
+      estimatedMonthlyRevenue,
+    };
+  }
+  
+  async logActivity(eventType: string, description: string, metadata?: any): Promise<ActivityLog> {
+    const [result] = await db.insert(activityLogs).values({
+      eventType,
+      description,
+      metadata: metadata || null,
+    }).returning();
+    return result;
+  }
+  
+  async getActivityLogs(limit: number = 10): Promise<ActivityLog[]> {
+    return db.select().from(activityLogs)
+      .orderBy(desc(activityLogs.createdAt))
+      .limit(limit);
+  }
+  
+  async resetAdminPasswordByEmail(email: string, passwordHash: string): Promise<void> {
+    await db.update(users)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(users.email, email));
   }
 }
 

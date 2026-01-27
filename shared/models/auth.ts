@@ -21,9 +21,19 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  role: text("role").default("user"), // 'user' or 'ADMIN'
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Activity logs for admin dashboard real-time monitoring
+export const activityLogs = pgTable("activity_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventType: text("event_type").notNull(), // NEW_USER_JOINED, BOOKING_CONFIRMED, THREAT_NEUTRALIZED, etc.
+  description: text("description").notNull(),
+  metadata: jsonb("metadata"), // Additional event data
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [index("idx_activity_logs_created").on(table.createdAt)]);
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -49,8 +59,15 @@ export const resetPasswordSchema = z.object({
   newPassword: z.string().min(8, "Le mot de passe doit contenir au moins 8 caractères"),
 });
 
+export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type ActivityLog = typeof activityLogs.$inferSelect;
+export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;

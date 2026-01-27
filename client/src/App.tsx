@@ -19,6 +19,7 @@ import WhatsAppPage from "@/pages/whatsapp";
 import BlacklistPage from "@/pages/blacklist";
 import SignalementsPage from "@/pages/signalements";
 import AbonnementPage from "@/pages/abonnement";
+import AdminPage from "@/pages/admin";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedRouter() {
@@ -46,6 +47,7 @@ function AuthenticatedRouter() {
               <Route path="/blacklist" component={BlacklistPage} />
               <Route path="/signalements" component={SignalementsPage} />
               <Route path="/abonnement" component={AbonnementPage} />
+              <Route path="/admin" component={AdminPage} />
               <Route component={NotFound} />
             </Switch>
           </main>
