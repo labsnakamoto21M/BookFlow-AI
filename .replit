@@ -40,4 +40,9 @@ args = "npm run dev"
 waitForPort = 5000
 
 [agent]
-integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_database:1.0.0", "stripe:2.0.0"]
+integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_database:1.0.0", "stripe:2.0.0", "javascript_stripe:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+PUPPETEER_EXECUTABLE_PATH = "/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium"
