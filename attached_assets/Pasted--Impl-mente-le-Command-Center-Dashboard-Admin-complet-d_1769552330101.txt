@@ -1,0 +1,25 @@
+"Implémente le Command Center (Dashboard Admin) complet de ChatSlot en suivant scrupuleusement ces étapes techniques :
+1. ARCHITECTURE ET BASE DE DONNÉES (schema.ts)
+Ajoute une colonne role (text) dans la table users avec 'user' par défaut.
+Ajoute une logique de migration pour définir l'utilisateur merouanes1986@gmail.com comme ADMIN.
+Assure-toi que la suppression d'un utilisateur (DELETE CASCADE) supprime automatiquement son provider_profile, ses appointments, ses services et ses sessions WhatsApp.
+2. SÉCURITÉ ET ROUTES (routes.ts)
+Crée un middleware de protection : Seuls les utilisateurs avec role === 'ADMIN' peuvent accéder aux routes commençant par /api/admin.
+Bloque l'accès à la page frontend /admin pour tout utilisateur non-admin (redirection ou erreur 403).
+Fonction Secours : Crée un script ou une route temporaire protégée par une variable d'environnement ADMIN_RESET_TOKEN pour me permettre de réinitialiser mon propre mot de passe administrateur en cas de perte.
+3. INTERFACE UTILISATEUR (UI - /admin)
+Design : Utilise une esthétique Cypherpunk Rouge/Noir. Remplace le vert par du Rouge Néon (#FF3131) pour signaler le mode 'Maître du Système'. Police Monospace obligatoire.
+Tableau des Utilisateurs : Affiche une liste complète (Email, Date d'inscription, Statut de l'abonnement Stripe, Nombre de RDV générés).
+Gestion Utilisateur (Actions par ligne) :
+Bouton [RESET_PWD] : Ouvre un modal pour saisir un nouveau mot de passe pour l'utilisateur.
+Bouton [FORCE_ACTIVATE] : Pour activer manuellement l'abonnement d'une prestataire sans passer par Stripe.
+Bouton [DELETE_USER] : Avec confirmation de sécurité, pour supprimer définitivement un compte (ex: pour libérer l'email labs.nakamoto@gmail.com).
+4. MOTEUR DE STATISTIQUES ET BUSINESS INTELLIGENCE
+Stats de Marché : Calcule et affiche sur le dashboard admin :
+Nombre total de RDV confirmés sur toute la plateforme.
+Répartition en % entre les réservations 'Privé' (Incall) et 'Escort' (Outcall).
+Top 3 des 'Extras' (services) les plus demandés par les clients finaux.
+Stats de Sécurité : Affiche un compteur 'SÉCURITÉ RÉSEAU' global (Total des clients dans la Safety Blacklist + Total des No-shows signalés).
+Stats Financières : Estimation du Chiffre d'Affaires mensuel basé sur les abonnements Stripe actifs.
+5. LOGS EN TEMPS RÉEL
+Ajoute une console 'Live Activity' affichant les 10 derniers événements système : (ex: 'NEW_USER_JOINED: email@test.com', 'THREAT_NEUTRALIZED: +32470...', 'BOOKING_CONFIRMED')."
