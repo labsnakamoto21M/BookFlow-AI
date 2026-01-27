@@ -81,7 +81,7 @@ class WhatsAppManager {
       }),
       puppeteer: {
         headless: true,
-        executablePath: process.env.CHROMIUM_PATH || "/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium",
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -176,9 +176,15 @@ class WhatsAppManager {
     });
 
     try {
+      const chromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
+      console.log(`[WhatsApp] Démarrage de Puppeteer avec Chromium: ${chromiumPath}`);
+      console.log(`[WhatsApp] Initialisation du client pour provider: ${providerId}`);
       await client.initialize();
-    } catch (error) {
-      // Failed to initialize - will retry on next connection attempt
+      console.log(`[WhatsApp] Client initialisé avec succès pour provider: ${providerId}`);
+    } catch (error: any) {
+      console.error(`[WhatsApp] ERREUR d'initialisation Puppeteer pour provider ${providerId}:`, error);
+      console.error(`[WhatsApp] Message d'erreur:`, error?.message || 'Unknown error');
+      console.error(`[WhatsApp] Stack trace:`, error?.stack || 'No stack trace');
     }
 
     return session;
