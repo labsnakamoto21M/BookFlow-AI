@@ -1,0 +1,22 @@
+"Agis en tant qu'expert en protocoles de messagerie. Nous abandonnons Puppeteer/whatsapp-web.js pour pivoter vers la librairie @whiskeysockets/baileys. C'est une priorité absolue.
+1. MUSCLAGE DE L'IDENTITÉ TECHNIQUE (Anti-Detection) :
+Pour éviter l'erreur 'Impossible de connecter de nouveaux appareils', configure Baileys pour qu'il paraisse 100% humain aux yeux des serveurs Meta :
+Browser Metadata : Configure le socket pour qu'il s'identifie comme un navigateur Chrome sur macOS. Utilise exactement ceci : browser: ['Mac OS', 'Chrome', '121.0.0.0'].
+Simulation de frappe (Presence Update) : Avant chaque réponse envoyée par le bot, active l'état 'en train d'écrire' (composing) pendant un délai aléatoire entre 2 et 5 secondes. Cela simule un humain qui tape au clavier.
+Délais Aléatoires : N'envoie jamais de réponse instantanée. Ajoute un délai de 'réflexion' aléatoire (entre 1 et 3 secondes) après la réception du message pour casser le rythme robotique.
+Sync History : Désactive la synchronisation complète de l'historique lors de la connexion pour rester léger et discret.
+2. TRANSITION TECHNIQUE :
+Supprime whatsapp-web.js, Chromium et Puppeteer du projet.
+Installe @whiskeysockets/baileys, pino (pour les logs) et qrcode.
+Implémente la connexion avec useMultiFileAuthState dans le dossier ./auth_info_baileys pour que la session soit persistante.
+3. RÉ-INJECTION DE LA LOGIQUE MÉTIER (Furtif & Brut) :
+Réimplémente toutes nos règles dans le nouveau whatsapp.ts :
+Ton : 1ère personne ('je'), court, sec, sans aucun emoji.
+Style SMS : Abréviations et fautes (cc, darrivé, tenverai, a tte).
+Censure : Fonction censorText obligatoire (An4l, S@ns capote, Fell4tion, Finitio.n vizage, Sp3rme).
+Dual Pricing : Escort disponible uniquement pour 60 min ou plus.
+Sécurité Adresse : 2 étapes (Google Maps à la confirmation, Secret Details à T-15).
+Statuts : ACTIVE (⚡), AWAY (🌙), GHOST (👻).
+No-Show : Logique '2 signalements = blocage automatique' liée au bouton de l'agenda.
+Safety Blacklist : Silence radio pour les profils dangereux (2 signalements danger).
+Assure-toi que le QR Code est toujours envoyé au frontend sous forme de base64 pour affichage immédiat."
