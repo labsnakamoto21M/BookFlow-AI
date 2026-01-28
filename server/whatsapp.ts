@@ -1,5 +1,13 @@
-import pkg from "whatsapp-web.js";
-const { Client, LocalAuth } = pkg;
+import makeWASocket, {
+  useMultiFileAuthState,
+  DisconnectReason,
+  WASocket,
+  proto,
+  delay,
+  fetchLatestBaileysVersion,
+} from "@whiskeysockets/baileys";
+import { Boom } from "@hapi/boom";
+import pino from "pino";
 import qrcode from "qrcode";
 import { storage } from "./storage";
 import { format, addDays, startOfDay, endOfDay, parseISO } from "date-fns";
@@ -8,10 +16,8 @@ import cron from "node-cron";
 import fs from "fs";
 import path from "path";
 
-type ClientType = InstanceType<typeof Client>;
-
 interface WhatsAppSession {
-  client: ClientType;
+  socket: WASocket | null;
   qrCode: string | null;
   connected: boolean;
   phoneNumber: string | null;
@@ -29,10 +35,12 @@ interface ConversationState {
   lastUpdate: number;
 }
 
+const logger = pino({ level: "silent" });
+
 class WhatsAppManager {
   private sessions: Map<string, WhatsAppSession> = new Map();
   private conversationStates: Map<string, ConversationState> = new Map();
-  private awayMessageSent: Map<string, number> = new Map(); // Track AWAY messages sent to avoid spam
+  private awayMessageSent: Map<string, number> = new Map();
 
   private getConversationKey(providerId: string, clientPhone: string): string {
     return `${providerId}:${clientPhone}`;
@@ -69,83 +77,24 @@ class WhatsAppManager {
     this.conversationStates.delete(key);
   }
 
+  private randomDelay(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
   async initSession(providerId: string): Promise<WhatsAppSession> {
     if (this.sessions.has(providerId)) {
       return this.sessions.get(providerId)!;
     }
 
-    // Ensure session directory exists with write permissions
-    const authPath = "./.wwebjs_auth";
+    const authPath = `./auth_info_baileys/${providerId}`;
     if (!fs.existsSync(authPath)) {
       fs.mkdirSync(authPath, { recursive: true });
-      console.log("[WA-SYSTEM] Session directory created:", authPath);
+      console.log("[WA-BAILEYS] Session directory created:", authPath);
     }
-
-    const client = new Client({
-      authStrategy: new LocalAuth({ 
-        clientId: providerId,
-        dataPath: authPath
-      }),
-      authTimeoutMs: 90000, // 90 seconds timeout for QR code generation
-      puppeteer: {
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--no-first-run",
-          "--no-zygote",
-          "--single-process", // CRUCIAL for Replit
-          "--disable-gpu",
-          "--disable-canvas-aa",
-          "--disable-2d-canvas-clip-utils",
-          "--disable-gl-drawing-for-tests",
-          "--disable-extensions",
-          "--disable-background-networking",
-          "--disable-default-apps",
-          "--disable-sync",
-          "--disable-translate",
-          "--hide-scrollbars",
-          "--metrics-recording-only",
-          "--mute-audio",
-          "--no-default-browser-check",
-          "--disable-features=TranslateUI",
-          "--disable-component-extensions-with-background-pages",
-          "--disable-ipc-flooding-protection",
-          "--disable-renderer-backgrounding",
-          "--force-color-profile=srgb",
-          "--disable-backgrounding-occluded-windows",
-          "--disk-cache-dir=/tmp/puppeteer-cache", // Force cache for faster loading
-          "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        ],
-      },
-    });
-
-    // Block media requests to reduce RAM usage by 30-50%
-    client.on("ready", async () => {
-      try {
-        const page = await (client as any).pupPage;
-        if (page) {
-          await page.setRequestInterception(true);
-          page.on("request", (req: any) => {
-            const resourceType = req.resourceType();
-            if (["image", "media", "font", "stylesheet"].includes(resourceType)) {
-              req.abort();
-            } else {
-              req.continue();
-            }
-          });
-        }
-      } catch (err) {
-        // Request interception setup failed, continue without it
-      }
-    });
 
     const now = Date.now();
     const session: WhatsAppSession = {
-      client,
+      socket: null,
       qrCode: null,
       connected: false,
       phoneNumber: null,
@@ -156,104 +105,115 @@ class WhatsAppManager {
 
     this.sessions.set(providerId, session);
 
-    client.on("qr", async (qr) => {
-      console.log('[DEBUG] Événement QR émis !');
-      session.qrCode = await qrcode.toDataURL(qr);
-      session.connected = false;
-    });
-
-    client.on("ready", async () => {
-      session.connected = true;
-      session.qrCode = null;
-      const info = client.info;
-      session.phoneNumber = info?.wid?.user || null;
-      await storage.updateProviderProfile(providerId, { whatsappConnected: true });
-    });
-
-    client.on("authenticated", () => {
-      // Authenticated successfully
-    });
-
-    client.on("disconnected", async (reason) => {
-      session.connected = false;
-      session.phoneNumber = null;
-      await storage.updateProviderProfile(providerId, { whatsappConnected: false });
-    });
-
-    client.on("message", async (msg) => {
-      await this.handleIncomingMessage(providerId, msg);
-    });
-
-    // Listen for all messages (including outgoing) to detect !noshow command
-    client.on("message_create", async (msg) => {
-      await this.handleMessageCreate(providerId, msg, client);
-    });
-
-    try {
-      const chromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
-      console.log(`[WA-SYSTEM] Démarrage de Puppeteer avec Chromium: ${chromiumPath}`);
-      console.log(`[WA-SYSTEM] Navigateur lancé, attente du chargement WhatsApp Web...`);
-      console.log(`[WA-SYSTEM] Timeout configuré: 90 secondes - Provider: ${providerId}`);
-      await client.initialize();
-      console.log(`[WA-SYSTEM] Client initialisé avec succès pour provider: ${providerId}`);
-      
-      // Debug screenshot every 20 seconds
-      const startDebugScreenshots = async () => {
-        let screenshotCount = 0;
-        const maxScreenshots = 6; // 2 minutes of screenshots
-        const interval = setInterval(async () => {
-          try {
-            const page = await (client as any).pupPage;
-            if (page && !session.connected) {
-              screenshotCount++;
-              const filename = `debug_whatsapp_${screenshotCount}.png`;
-              await page.screenshot({ path: filename, fullPage: true });
-              console.log(`[DEBUG] Screenshot saved: ${filename}`);
-              if (screenshotCount >= maxScreenshots || session.connected) {
-                clearInterval(interval);
-                console.log('[DEBUG] Screenshot capture stopped');
-              }
-            } else if (session.connected) {
-              clearInterval(interval);
-              console.log('[DEBUG] Connected - stopping screenshots');
-            }
-          } catch (err: any) {
-            console.log('[DEBUG] Screenshot error:', err?.message);
-          }
-        }, 20000);
-      };
-      startDebugScreenshots();
-      
-    } catch (error: any) {
-      console.error(`[WhatsApp] ERREUR d'initialisation Puppeteer pour provider ${providerId}:`, error);
-      console.error(`[WhatsApp] Message d'erreur:`, error?.message || 'Unknown error');
-      console.error(`[WhatsApp] Stack trace:`, error?.stack || 'No stack trace');
-    }
+    await this.connectSocket(providerId, session);
 
     return session;
   }
 
-  // Handle outgoing messages - !noshow command removed (handled via Agenda UI instead)
-  async handleMessageCreate(providerId: string, msg: any, client: any) {
-    // No command processing from provider messages anymore
-    // No-show is now handled via the Agenda interface
+  private async connectSocket(providerId: string, session: WhatsAppSession): Promise<void> {
+    const authPath = `./auth_info_baileys/${providerId}`;
+    
+    try {
+      const { state, saveCreds } = await useMultiFileAuthState(authPath);
+      const { version } = await fetchLatestBaileysVersion();
+
+      console.log(`[WA-BAILEYS] Starting connection for provider: ${providerId}`);
+      console.log(`[WA-BAILEYS] Using Baileys version: ${version.join(".")}`);
+
+      const socket = makeWASocket({
+        version,
+        logger,
+        auth: state,
+        printQRInTerminal: false,
+        browser: ["Mac OS", "Chrome", "121.0.0.0"],
+        syncFullHistory: false,
+        generateHighQualityLinkPreview: false,
+        getMessage: async () => ({ conversation: "" }),
+      });
+
+      session.socket = socket;
+
+      socket.ev.on("creds.update", saveCreds);
+
+      socket.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+          console.log("[WA-BAILEYS] QR Code received!");
+          session.qrCode = await qrcode.toDataURL(qr);
+          session.connected = false;
+        }
+
+        if (connection === "close") {
+          const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+          
+          console.log(`[WA-BAILEYS] Connection closed. Status: ${statusCode}. Reconnect: ${shouldReconnect}`);
+          
+          session.connected = false;
+          session.phoneNumber = null;
+          await storage.updateProviderProfile(providerId, { whatsappConnected: false });
+
+          if (shouldReconnect) {
+            setTimeout(() => this.connectSocket(providerId, session), 5000);
+          } else {
+            session.qrCode = null;
+            this.sessions.delete(providerId);
+          }
+        } else if (connection === "open") {
+          console.log(`[WA-BAILEYS] Connected successfully for provider: ${providerId}`);
+          session.connected = true;
+          session.qrCode = null;
+          
+          const user = socket.user;
+          session.phoneNumber = user?.id?.split(":")[0] || user?.id?.split("@")[0] || null;
+          
+          await storage.updateProviderProfile(providerId, { whatsappConnected: true });
+        }
+      });
+
+      socket.ev.on("messages.upsert", async (m) => {
+        if (m.type !== "notify") return;
+
+        for (const msg of m.messages) {
+          if (!msg.message || msg.key.fromMe) continue;
+          await this.handleIncomingMessage(providerId, msg, socket);
+        }
+      });
+
+    } catch (error: any) {
+      console.error(`[WA-BAILEYS] Error initializing for provider ${providerId}:`, error?.message);
+    }
   }
 
-  async handleIncomingMessage(providerId: string, msg: any) {
-    // FILTER 1: Ignore all group messages (group chats end with @g.us)
-    if (msg.from.endsWith("@g.us")) {
+  async handleIncomingMessage(
+    providerId: string, 
+    msg: proto.IWebMessageInfo, 
+    socket: WASocket
+  ): Promise<void> {
+    const remoteJid = msg.key?.remoteJid;
+    if (!remoteJid) return;
+
+    // FILTER 1: Ignore all group messages
+    if (remoteJid.endsWith("@g.us")) return;
+
+    // FILTER 1b: Ignore media messages (images, audio, video, documents, stickers)
+    // Bot only needs text messages to save processing and avoid unnecessary interactions
+    const messageContent = msg.message;
+    if (messageContent && (
+      messageContent.imageMessage ||
+      messageContent.audioMessage ||
+      messageContent.videoMessage ||
+      messageContent.documentMessage ||
+      messageContent.stickerMessage ||
+      messageContent.contactMessage ||
+      messageContent.locationMessage
+    )) {
       return;
     }
 
-    // FILTER 1b: Ignore media messages to save RAM - don't download or process them
-    // Bot only needs text messages, media would be loaded into memory unnecessarily
-    if (msg.hasMedia) {
-      return;
-    }
+    const clientPhone = remoteJid.replace("@s.whatsapp.net", "");
 
-    const clientPhone = msg.from.replace("@c.us", "");
-
-    // Get provider profile first to check availability mode
     const profile = await storage.getProviderProfileById(providerId);
     if (!profile) return;
 
@@ -268,7 +228,6 @@ class WhatsAppManager {
       const lastAwaySent = this.awayMessageSent.get(awayKey);
       const oneHourAgo = Date.now() - (60 * 60 * 1000);
       
-      // Only send AWAY message once per hour per client
       if (!lastAwaySent || lastAwaySent < oneHourAgo) {
         await this.sendMessage(providerId, clientPhone, "cc! je suis indisponible pour le moment, mais laisse ton message et je te repondrai plus tard");
         this.awayMessageSent.set(awayKey, Date.now());
@@ -279,48 +238,36 @@ class WhatsAppManager {
     // FILTER 3: Check if sender is a dangerous client (2+ safety reports) - silent ignore
     const isDangerous = await storage.isDangerousClient(clientPhone);
     if (isDangerous) {
-      return; // Silent ignore for dangerous clients
+      return;
     }
 
-    // FILTER 4: Check if sender is a known contact - if so, stay silent
-    try {
-      const contact = await msg.getContact();
-      if (contact && contact.isMyContact) {
-        return;
-      }
-    } catch (error) {
-      // Continue if contact check fails
-    }
+    // Extract text content from various message types
+    const content = (
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      ""
+    ).toLowerCase().trim();
 
-    const content = msg.body.toLowerCase().trim();
-
-    // GDPR: No message content logging - messages are processed ephemerally
+    // FILTER 4: Ignore empty messages
+    if (!content) return;
 
     const services = await storage.getServices(providerId);
     const businessHours = await storage.getBusinessHours(providerId);
 
-    // Check if client is personally blocked by this provider
     const isBlocked = await storage.isBlockedByProvider(providerId, clientPhone);
-    if (isBlocked) {
-      return;
-    }
+    if (isBlocked) return;
 
-    // Check client reliability score - if 2+ no-shows, refuse booking
     const reliability = await storage.getClientReliability(clientPhone);
     if (reliability && reliability.noShowTotal && reliability.noShowTotal >= 2) {
       await this.sendMessage(providerId, clientPhone, "desole, je ne peux plus te donner de rdv. tu as rate trop de rdv sans prevenir.");
       return;
     }
 
-    // Check if client is in shared blacklist (continue but be cautious)
     await storage.isBlacklisted(clientPhone);
 
     let response = "";
-
-    // Get conversation state
     const convState = this.getConversationState(providerId, clientPhone);
 
-    // Handle different types of messages
     if (this.isGreeting(content)) {
       response = this.generateGreeting(profile.businessName);
     } else if (this.isPriceQuery(content)) {
@@ -349,12 +296,11 @@ class WhatsAppManager {
       response = this.generateDefaultResponse(profile.businessName);
     }
 
-    // Send response
     await this.sendMessage(providerId, clientPhone, response);
   }
 
   private isGreeting(content: string): boolean {
-    const greetings = ["bonjour", "bonsoir", "salut", "hello", "hi", "coucou", "hey"];
+    const greetings = ["bonjour", "bonsoir", "salut", "hello", "hi", "coucou", "hey", "cc"];
     return greetings.some(g => content.includes(g));
   }
 
@@ -389,7 +335,6 @@ class WhatsAppManager {
   }
 
   private isSlotSelection(content: string): boolean {
-    // Check if it looks like a time selection (e.g., "10h", "14h30", "demain 15h")
     const timePattern = /\d{1,2}h?\d{0,2}/;
     return timePattern.test(content);
   }
@@ -399,7 +344,6 @@ class WhatsAppManager {
     return durationKeywords.some(k => content.includes(k));
   }
 
-  // Censure anti-ban: remplace les termes sensibles
   private censorText(text: string): string {
     const replacements: Record<string, string> = {
       "Anal": "An4l",
@@ -417,7 +361,7 @@ class WhatsAppManager {
     };
     let result = text;
     for (const [original, replacement] of Object.entries(replacements)) {
-      result = result.replace(new RegExp(original, 'g'), replacement);
+      result = result.replace(new RegExp(original, "g"), replacement);
     }
     return result;
   }
@@ -449,7 +393,6 @@ class WhatsAppManager {
     activePrices.forEach(price => {
       const label = durationLabels[price.duration] || `${price.duration}min`;
       const priv = price.pricePrivate ? (price.pricePrivate / 100) : 0;
-      // Escort uniquement pour >= 60 min
       if (price.duration >= 60) {
         const esc = price.priceEscort ? (price.priceEscort / 100) : 0;
         response += `${label}: ${priv}e | ${esc}e\n`;
@@ -481,7 +424,6 @@ class WhatsAppManager {
     const basePrices = await storage.getBasePrices(providerId);
     let activePrices = basePrices.filter(p => p.active);
     
-    // Escort uniquement pour >= 60 min
     if (type === "escort") {
       activePrices = activePrices.filter(p => p.duration >= 60);
     }
@@ -518,7 +460,6 @@ class WhatsAppManager {
     const basePrices = await storage.getBasePrices(providerId);
     let activePrices = basePrices.filter(p => p.active);
     
-    // Escort uniquement pour >= 60 min
     if (type === "escort") {
       activePrices = activePrices.filter(p => p.duration >= 60);
     }
@@ -716,7 +657,6 @@ class WhatsAppManager {
   private async generateAvailableSlots(providerId: string, clientPhone: string, services: any[], businessHours: any[]): Promise<string> {
     const today = new Date();
     const tomorrow = addDays(today, 1);
-    const state = this.getConversationState(providerId, clientPhone);
 
     const todaySlots = await this.getAvailableSlots(providerId, today, businessHours);
     const tomorrowSlots = await this.getAvailableSlots(providerId, tomorrow, businessHours);
@@ -763,11 +703,9 @@ class WhatsAppManager {
     const startOfDayDate = startOfDay(date);
     const endOfDayDate = endOfDay(date);
 
-    // Get existing appointments and blocked slots
     const existingAppointments = await storage.getAppointments(providerId, startOfDayDate, endOfDayDate);
     const blockedSlots = await storage.getBlockedSlots(providerId, startOfDayDate, endOfDayDate);
 
-    // Generate 30-minute slots
     let currentHour = openH;
     let currentMinute = openM;
 
@@ -775,19 +713,18 @@ class WhatsAppManager {
       const slotTime = new Date(date);
       slotTime.setHours(currentHour, currentMinute, 0, 0);
 
-      // Check if slot is available (not in past, not booked, not blocked)
       const now = new Date();
       if (slotTime > now) {
         const isBooked = existingAppointments.some(apt => {
-          const aptTime = typeof apt.appointmentDate === 'string' 
+          const aptTime = typeof apt.appointmentDate === "string" 
             ? parseISO(apt.appointmentDate) 
             : apt.appointmentDate;
           return Math.abs(aptTime.getTime() - slotTime.getTime()) < 30 * 60 * 1000;
         });
 
         const isBlocked = blockedSlots.some(slot => {
-          const start = typeof slot.startTime === 'string' ? parseISO(slot.startTime) : slot.startTime;
-          const end = typeof slot.endTime === 'string' ? parseISO(slot.endTime) : slot.endTime;
+          const start = typeof slot.startTime === "string" ? parseISO(slot.startTime) : slot.startTime;
+          const end = typeof slot.endTime === "string" ? parseISO(slot.endTime) : slot.endTime;
           return slotTime >= start && slotTime < end;
         });
 
@@ -796,7 +733,6 @@ class WhatsAppManager {
         }
       }
 
-      // Move to next 30-minute slot
       currentMinute += 30;
       if (currentMinute >= 60) {
         currentMinute = 0;
@@ -804,21 +740,19 @@ class WhatsAppManager {
       }
     }
 
-    return slots.slice(0, 6); // Max 6 slots to show
+    return slots.slice(0, 6);
   }
 
   private async handleSlotSelection(providerId: string, clientPhone: string, content: string, services: any[]): Promise<string> {
-    // Simple slot booking logic
     const timeMatch = content.match(/(\d{1,2})h?(\d{0,2})/);
     
     if (!timeMatch) {
-      return "Je n'ai pas compris. Veuillez indiquer l'heure souhaitée (ex: 14h ou 14h30).";
+      return "J'ai pas compris. Indique l'heure souhaitee (ex: 14h ou 14h30).";
     }
 
     const hour = parseInt(timeMatch[1]);
     const minute = parseInt(timeMatch[2] || "0");
 
-    // Determine if it's today or tomorrow based on content
     const isToday = !content.includes("demain");
     const appointmentDate = new Date();
     
@@ -828,10 +762,9 @@ class WhatsAppManager {
     
     appointmentDate.setHours(hour, minute, 0, 0);
 
-    // Default to first active service if only one
     const activeServices = services.filter(s => s.active);
     if (activeServices.length === 0) {
-      return "Désolé, aucun service n'est disponible.";
+      return "Desole, aucun service dispo.";
     }
 
     const selectedService = activeServices[0];
@@ -862,7 +795,6 @@ class WhatsAppManager {
     return `cc!\n\ntape *prix* pour mes tarifs\ntape *rdv* pour reserver`;
   }
 
-  // Send no-show warning message to client (called from Agenda UI)
   async sendNoShowWarning(providerId: string, clientPhone: string): Promise<void> {
     const message = "coucou, je vois que tu n'es pas venu... s'il te plait, ne reserve que si tu es certain de venir. mon systeme bloque les numeros apres deux absences, donc si tu rates le prochain, je ne pourrai plus te donner de rdv. on fait attention?";
     await this.sendMessage(providerId, clientPhone, message);
@@ -870,18 +802,29 @@ class WhatsAppManager {
 
   async sendMessage(providerId: string, to: string, message: string) {
     const session = this.sessions.get(providerId);
-    if (!session?.connected) {
+    if (!session?.connected || !session.socket) {
       return;
     }
 
     try {
-      const chatId = to.includes("@c.us") ? to : `${to}@c.us`;
-      // Apply censorship to ALL outgoing messages for anti-ban protection
+      const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
+      
+      const thinkDelay = this.randomDelay(1000, 3000);
+      await delay(thinkDelay);
+
+      await session.socket.presenceSubscribe(jid);
+      await delay(500);
+      
+      await session.socket.sendPresenceUpdate("composing", jid);
+      const typingDelay = this.randomDelay(2000, 5000);
+      await delay(typingDelay);
+      
+      await session.socket.sendPresenceUpdate("paused", jid);
+
       const censoredMessage = this.censorText(message);
-      await session.client.sendMessage(chatId, censoredMessage);
-      // GDPR: No message content logging - messages are processed ephemerally
+      await session.socket.sendMessage(jid, { text: censoredMessage });
     } catch (error) {
-      // Silent fail for production
+      console.error("[WA-BAILEYS] Error sending message:", error);
     }
   }
 
@@ -896,13 +839,13 @@ class WhatsAppManager {
 
   async disconnect(providerId: string): Promise<void> {
     const session = this.sessions.get(providerId);
-    if (session) {
+    if (session?.socket) {
       try {
-        await session.client.logout();
-        await session.client.destroy();
+        await session.socket.logout();
       } catch (error) {
         // Silent fail on disconnect
       }
+      session.socket.end(undefined);
       this.sessions.delete(providerId);
     }
     await storage.updateProviderProfile(providerId, { whatsappConnected: false });
@@ -911,116 +854,14 @@ class WhatsAppManager {
   async refreshQR(providerId: string): Promise<void> {
     const session = this.sessions.get(providerId);
     if (session && !session.connected) {
-      try {
-        await session.client.destroy();
-      } catch (error) {
-        // Ignore
+      if (session.socket) {
+        session.socket.end(undefined);
       }
       this.sessions.delete(providerId);
       await this.initSession(providerId);
     }
   }
 
-  // Auto-restart session to prevent memory leaks (every 3 days)
-  private async autoRestartSession(providerId: string): Promise<void> {
-    const session = this.sessions.get(providerId);
-    if (!session) return;
-
-    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-    const timeSinceRestart = Date.now() - session.lastRestart;
-
-    if (timeSinceRestart >= threeDaysMs && session.connected) {
-      console.log(`[WhatsApp] Auto-restarting session for provider ${providerId} (3-day cycle)`);
-      try {
-        await session.client.destroy();
-        this.sessions.delete(providerId);
-        // Clear conversation states for this provider
-        const convKeys = Array.from(this.conversationStates.keys());
-        for (const key of convKeys) {
-          if (key.startsWith(`${providerId}:`)) {
-            this.conversationStates.delete(key);
-          }
-        }
-        // Reinitialize after a short delay and update lastRestart
-        setTimeout(async () => {
-          const newSession = await this.initSession(providerId);
-          if (newSession) {
-            newSession.lastRestart = Date.now();
-          }
-        }, 5000);
-      } catch (error) {
-        console.error(`[WhatsApp] Error during auto-restart for ${providerId}:`, error);
-      }
-    }
-  }
-
-  // Check all sessions and restart if needed
-  async checkAndRestartSessions(): Promise<void> {
-    const sessionEntries = Array.from(this.sessions.entries());
-    for (const [providerId] of sessionEntries) {
-      await this.autoRestartSession(providerId);
-    }
-  }
-
-  // Graceful shutdown - destroy all sessions properly
-  async gracefulShutdown(): Promise<void> {
-    console.log("[WhatsApp] Graceful shutdown initiated...");
-    const shutdownPromises: Promise<void>[] = [];
-
-    const sessionEntries = Array.from(this.sessions.entries());
-    for (const [providerId, session] of sessionEntries) {
-      shutdownPromises.push(
-        (async () => {
-          try {
-            await session.client.destroy();
-            console.log(`[WhatsApp] Session ${providerId} destroyed`);
-          } catch (error) {
-            console.error(`[WhatsApp] Error destroying session ${providerId}:`, error);
-          }
-        })()
-      );
-    }
-
-    await Promise.all(shutdownPromises);
-    this.sessions.clear();
-    this.conversationStates.clear();
-    this.awayMessageSent.clear();
-    console.log("[WhatsApp] All sessions cleaned up");
-  }
-
-  // Clean temporary files (except essential auth files)
-  async cleanupTempFiles(): Promise<void> {
-    const authPath = "./.wwebjs_auth";
-    const essentialFiles = ["session"];
-
-    try {
-      if (!fs.existsSync(authPath)) return;
-
-      const sessionDirs = fs.readdirSync(authPath);
-      for (const dir of sessionDirs) {
-        const dirPath = path.join(authPath, dir);
-        if (!fs.statSync(dirPath).isDirectory()) continue;
-
-        // Clean cache and temp files, keep auth data
-        const cleanDirs = ["Cache", "Code Cache", "GPUCache", "Service Worker"];
-        for (const cleanDir of cleanDirs) {
-          const cleanPath = path.join(dirPath, "Default", cleanDir);
-          if (fs.existsSync(cleanPath)) {
-            try {
-              fs.rmSync(cleanPath, { recursive: true, force: true });
-              console.log(`[WhatsApp] Cleaned: ${cleanPath}`);
-            } catch (err) {
-              // Ignore errors during cleanup
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("[WhatsApp] Error during temp cleanup:", error);
-    }
-  }
-
-  // Clear expired conversation states (30 min timeout)
   cleanupExpiredConversations(): void {
     const now = Date.now();
     const thirtyMinutes = 30 * 60 * 1000;
@@ -1032,7 +873,6 @@ class WhatsAppManager {
       }
     }
 
-    // Also clean expired away messages (1 hour)
     const oneHour = 60 * 60 * 1000;
     const awayEntries = Array.from(this.awayMessageSent.entries());
     for (const [key, timestamp] of awayEntries) {
@@ -1042,22 +882,12 @@ class WhatsAppManager {
     }
   }
 
-  // Initialize maintenance cron jobs
   initMaintenanceJobs(): void {
-    // Daily cleanup at 4:00 AM
     cron.schedule("0 4 * * *", async () => {
-      console.log("[WhatsApp] Running daily maintenance (4 AM)...");
-      await this.cleanupTempFiles();
+      console.log("[WA-BAILEYS] Running daily maintenance (4 AM)...");
       this.cleanupExpiredConversations();
     });
 
-    // Check sessions every 6 hours for auto-restart
-    cron.schedule("0 */6 * * *", async () => {
-      console.log("[WhatsApp] Checking sessions for auto-restart...");
-      await this.checkAndRestartSessions();
-    });
-
-    // Cleanup conversations every 15 minutes
     cron.schedule("*/15 * * * *", () => {
       this.cleanupExpiredConversations();
     });
@@ -1068,16 +898,4 @@ class WhatsAppManager {
 
 export const whatsappManager = new WhatsAppManager();
 
-// Initialize maintenance jobs on startup
 whatsappManager.initMaintenanceJobs();
-
-// Handle process signals for graceful shutdown
-process.on("SIGTERM", async () => {
-  await whatsappManager.gracefulShutdown();
-  process.exit(0);
-});
-
-process.on("SIGINT", async () => {
-  await whatsappManager.gracefulShutdown();
-  process.exit(0);
-});
