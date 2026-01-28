@@ -40,7 +40,8 @@
     "service": "Serviço",
     "upcoming": "Próximo",
     "thisWeek": "Esta semana",
-    "total": "Total"
+    "total": "Total",
+    "month": "mês"
   },
   "auth": {
     "login": "Entrar",
@@ -293,5 +294,37 @@
     "serverError": "Erro do servidor",
     "networkError": "Erro de rede",
     "validationError": "Erro de validação"
+  },
+  "landing": {
+    "systemOnline": "SISTEMA ONLINE",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "Transforme suas mensagens do WhatsApp em agendamentos confirmados. Filtre curiosos. Proteja sua segurança.",
+    "accessSystem": "ACESSAR SISTEMA",
+    "encryptedConnection": "Conexão criptografada estabelecida...",
+    "proofOfValue": "PROVA DE VALOR",
+    "keyStats": "ESTATÍSTICAS PRINCIPAIS",
+    "stat1Label": "Agendamentos Gerenciados",
+    "stat2Label": "Clientes Perigosos Bloqueados",
+    "stat3Label": "Mensagens Armazenadas",
+    "secretFeatures": "RECURSOS SECRETOS",
+    "featuresTitle": "MÓDULOS DO SISTEMA",
+    "feature1Title": "PILOTO AUTOMÁTICO",
+    "feature1Desc": "O bot conhece suas tarifas e horários. Responde por você em modo SMS humanizado.",
+    "feature2Title": "VERIFICAÇÃO DUPLA DE ENDEREÇO",
+    "feature2Desc": "O endereço exato é revelado apenas 15 minutos antes do agendamento. Segurança máxima.",
+    "feature3Title": "CONTROLE DE FANTASMAS",
+    "feature3Desc": "Reporte no-shows. Após 2 ausências, o cliente é banido da rede.",
+    "feature4Title": "ESCUDO DE SEGURANÇA",
+    "feature4Desc": "Beneficie-se de uma lista negra compartilhada por toda a comunidade contra clientes violentos.",
+    "securitySection": "SEGURANÇA E PRIVACIDADE",
+    "privacyTitle": "SELOS DE CONFIANÇA",
+    "badge1Desc": "Nenhuma mensagem é armazenada em nossos servidores.",
+    "badge2Desc": "Conversas criptografadas via WhatsApp.",
+    "badge3Desc": "Bot e interface disponíveis em 11 idiomas.",
+    "businessCase": "LUCRATIVIDADE",
+    "businessDesc": "Por €50/mês, ChatSlot é seu funcionário mais barato. Nunca dorme, nunca erra e protege seu sustento.",
+    "crackTheCode": "Crack the code.",
+    "footer": "Todos os direitos reservados."
   }
 }

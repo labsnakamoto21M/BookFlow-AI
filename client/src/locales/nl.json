@@ -40,7 +40,8 @@
     "service": "Dienst",
     "upcoming": "Komend",
     "thisWeek": "Deze week",
-    "total": "Totaal"
+    "total": "Totaal",
+    "month": "maand"
   },
   "auth": {
     "login": "Inloggen",
@@ -293,5 +294,37 @@
     "serverError": "Serverfout",
     "networkError": "Netwerkfout",
     "validationError": "Validatiefout"
+  },
+  "landing": {
+    "systemOnline": "SYSTEEM ONLINE",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "Zet je WhatsApp-berichten om in bevestigde afspraken. Filter nieuwsgierigen. Bescherm je veiligheid.",
+    "accessSystem": "SYSTEEM OPENEN",
+    "encryptedConnection": "Versleutelde verbinding tot stand gebracht...",
+    "proofOfValue": "BEWIJS VAN WAARDE",
+    "keyStats": "BELANGRIJKSTE STATISTIEKEN",
+    "stat1Label": "Afspraken Beheerd",
+    "stat2Label": "Gevaarlijke Klanten Geblokkeerd",
+    "stat3Label": "Berichten Opgeslagen",
+    "secretFeatures": "GEHEIME FUNCTIES",
+    "featuresTitle": "SYSTEEMMODULES",
+    "feature1Title": "AUTOPILOT",
+    "feature1Desc": "De bot kent je tarieven en uren. Hij antwoordt voor je in mensachtige SMS-modus.",
+    "feature2Title": "DUBBELCHECK ADRES",
+    "feature2Desc": "Het exacte adres wordt pas 15 minuten voor de afspraak onthuld. Maximale veiligheid.",
+    "feature3Title": "SPOOK-CONTROLE",
+    "feature3Desc": "Meld no-shows. Na 2 afzeggingen wordt de klant uit het netwerk verbannen.",
+    "feature4Title": "VEILIGHEIDSSCHILDI",
+    "feature4Desc": "Profiteer van een gedeelde zwarte lijst van de hele gemeenschap tegen gewelddadige klanten.",
+    "securitySection": "VEILIGHEID EN PRIVACY",
+    "privacyTitle": "VERTROUWENSBADGES",
+    "badge1Desc": "Geen berichten worden op onze servers opgeslagen.",
+    "badge2Desc": "Gesprekken versleuteld via WhatsApp.",
+    "badge3Desc": "Bot en interface beschikbaar in 11 talen.",
+    "businessCase": "WINSTGEVENDHEID",
+    "businessDesc": "Voor €50/maand is ChatSlot je goedkoopste werknemer. Hij slaapt nooit, maakt nooit fouten en beschermt je inkomen.",
+    "crackTheCode": "Crack the code.",
+    "footer": "Alle rechten voorbehouden."
   }
 }

@@ -40,7 +40,8 @@
     "service": "Service",
     "upcoming": "Upcoming",
     "thisWeek": "This Week",
-    "total": "Total"
+    "total": "Total",
+    "month": "month"
   },
   "auth": {
     "login": "Login",
@@ -293,5 +294,37 @@
     "serverError": "Server error",
     "networkError": "Network error",
     "validationError": "Validation error"
+  },
+  "landing": {
+    "systemOnline": "SYSTEM ONLINE",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "Transform your WhatsApp messages into confirmed appointments. Filter the curious. Protect your safety.",
+    "accessSystem": "ACCESS_SYSTEM",
+    "encryptedConnection": "Encrypted connection established...",
+    "proofOfValue": "PROOF OF VALUE",
+    "keyStats": "KEY STATS",
+    "stat1Label": "Appointments Managed",
+    "stat2Label": "Dangerous Clients Blocked",
+    "stat3Label": "Messages Stored",
+    "secretFeatures": "SECRET FEATURES",
+    "featuresTitle": "SYSTEM MODULES",
+    "feature1Title": "AUTOPILOT",
+    "feature1Desc": "The bot knows your rates and hours. It responds for you in human-like SMS mode.",
+    "feature2Title": "DOUBLE-CHECK ADDRESS",
+    "feature2Desc": "The exact address is only revealed 15 min before the appointment. Maximum security.",
+    "feature3Title": "GHOST CONTROL",
+    "feature3Desc": "Report No-Shows. After 2 absences, the client is banned from the network.",
+    "feature4Title": "SAFETY SHIELD",
+    "feature4Desc": "Benefit from a shared blacklist by the entire community against violent clients.",
+    "securitySection": "SECURITY & PRIVACY",
+    "privacyTitle": "TRUST BADGES",
+    "badge1Desc": "No messages are stored on our servers.",
+    "badge2Desc": "Conversations encrypted via WhatsApp.",
+    "badge3Desc": "Bot and interface available in 11 languages.",
+    "businessCase": "PROFITABILITY",
+    "businessDesc": "At €50/month, ChatSlot is your cheapest employee. It never sleeps, never makes mistakes, and protects your livelihood.",
+    "crackTheCode": "Crack the code.",
+    "footer": "All rights reserved."
   }
 }

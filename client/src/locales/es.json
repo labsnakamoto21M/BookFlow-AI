@@ -40,7 +40,8 @@
     "service": "Servicio",
     "upcoming": "Próximo",
     "thisWeek": "Esta semana",
-    "total": "Total"
+    "total": "Total",
+    "month": "mes"
   },
   "auth": {
     "login": "Iniciar sesión",
@@ -293,5 +294,37 @@
     "serverError": "Error del servidor",
     "networkError": "Error de red",
     "validationError": "Error de validación"
+  },
+  "landing": {
+    "systemOnline": "SISTEMA EN LÍNEA",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "Transforma tus mensajes de WhatsApp en citas confirmadas. Filtra curiosos. Protege tu seguridad.",
+    "accessSystem": "ACCEDER AL SISTEMA",
+    "encryptedConnection": "Conexión cifrada establecida...",
+    "proofOfValue": "PRUEBA DE VALOR",
+    "keyStats": "ESTADÍSTICAS CLAVE",
+    "stat1Label": "Citas Gestionadas",
+    "stat2Label": "Clientes Peligrosos Bloqueados",
+    "stat3Label": "Mensajes Almacenados",
+    "secretFeatures": "CARACTERÍSTICAS SECRETAS",
+    "featuresTitle": "MÓDULOS DEL SISTEMA",
+    "feature1Title": "AUTOPILOTO",
+    "feature1Desc": "El bot conoce tus tarifas y horarios. Responde por ti en modo SMS humanizado.",
+    "feature2Title": "VERIFICACIÓN DOBLE DE DIRECCIÓN",
+    "feature2Desc": "La dirección exacta se revela solo 15 minutos antes de la cita. Seguridad máxima.",
+    "feature3Title": "CONTROL DE FANTASMAS",
+    "feature3Desc": "Reporta no-shows. Después de 2 ausencias, el cliente se expulsa de la red.",
+    "feature4Title": "ESCUDO DE SEGURIDAD",
+    "feature4Desc": "Benefíciate de una lista negra compartida por toda la comunidad contra clientes violentos.",
+    "securitySection": "SEGURIDAD Y PRIVACIDAD",
+    "privacyTitle": "INSIGNIAS DE CONFIANZA",
+    "badge1Desc": "Ningún mensaje se almacena en nuestros servidores.",
+    "badge2Desc": "Conversaciones encriptadas a través de WhatsApp.",
+    "badge3Desc": "Bot e interfaz disponibles en 11 idiomas.",
+    "businessCase": "RENTABILIDAD",
+    "businessDesc": "Por €50/mes, ChatSlot es tu empleado más barato. Nunca duerme, nunca comete errores y protege tu sustento.",
+    "crackTheCode": "Crack the code.",
+    "footer": "Todos los derechos reservados."
   }
 }

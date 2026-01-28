@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import AuthPage from "@/pages/auth-page";
 import ForgotPasswordPage from "@/pages/forgot-password";
+import LandingPage from "@/pages/landing";
 import DashboardPage from "@/pages/dashboard";
 import ServicesPage from "@/pages/services";
 import HorairesPage from "@/pages/horaires";
@@ -85,8 +86,10 @@ function AppContent() {
   if (!user) {
     return (
       <Switch>
+        <Route path="/" component={LandingPage} />
+        <Route path="/login" component={AuthPage} />
         <Route path="/forgot-password" component={ForgotPasswordPage} />
-        <Route component={AuthPage} />
+        <Route component={LandingPage} />
       </Switch>
     );
   }

@@ -40,7 +40,8 @@
     "service": "Szolgáltatás",
     "upcoming": "Közelgő",
     "thisWeek": "Ez a hét",
-    "total": "Összesen"
+    "total": "Összesen",
+    "month": "hónap"
   },
   "auth": {
     "login": "Bejelentkezés",
@@ -293,5 +294,37 @@
     "serverError": "Szerverhiba",
     "networkError": "Hálózati hiba",
     "validationError": "Érvényesítési hiba"
+  },
+  "landing": {
+    "systemOnline": "RENDSZER ONLINE",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "Alakítsd WhatsApp-üzeneteidet megerősített időpontokká. Szűrd ki a kíváncsiskodókat. Védd meg a biztonságodat.",
+    "accessSystem": "RENDSZER HOZZÁFÉRÉSE",
+    "encryptedConnection": "Titkosított kapcsolat létesítve...",
+    "proofOfValue": "ÉRTÉK BIZONYÍTÉKA",
+    "keyStats": "KULCS STATISZTIKÁK",
+    "stat1Label": "Kezelt Időpontok",
+    "stat2Label": "Veszélyes Ügyfelek Blokkolva",
+    "stat3Label": "Tárolt Üzenetek",
+    "secretFeatures": "TITKOS FUNKCIÓK",
+    "featuresTitle": "RENDSZER MODULOK",
+    "feature1Title": "AUTOPILOTA",
+    "feature1Desc": "A bot ismeri az áraidat és nyitvatartási óráidat. Az SMS üzenetekhez hasonló módon válaszol helyetted.",
+    "feature2Title": "CÍM KETTŐS ELLENŐRZÉSE",
+    "feature2Desc": "A pontos cím csak 15 perccel az időpont előtt kerül felfedésre. Maximális biztonság.",
+    "feature3Title": "SZELLEM KONTROL",
+    "feature3Desc": "Jelents meg nem-megjelenéseket. 2 távolmaradás után az ügyfél ki van zárva a hálózatról.",
+    "feature4Title": "BIZTONSÁGI PAJZS",
+    "feature4Desc": "Élvezd a teljes közösség által megosztott fekete listát az erőszakos ügyfelek ellen.",
+    "securitySection": "BIZTONSÁG ÉS ADATVÉDELEM",
+    "privacyTitle": "BIZALOM JELVÉNYEK",
+    "badge1Desc": "Az üzeneteket nem tároljuk szervereink.",
+    "badge2Desc": "Beszélgetések titkosítva a WhatsAppon keresztül.",
+    "badge3Desc": "Bot és felület 11 nyelven elérhető.",
+    "businessCase": "JÖVEDELMEZŐSÉG",
+    "businessDesc": "€50/hónapért a ChatSlot a legolcsóbb alkalmazottad. Soha nem alszik, soha nem hibázik, és megvédi a megélhetésedet.",
+    "crackTheCode": "Crack the code.",
+    "footer": "Minden jog fenntartva."
   }
 }

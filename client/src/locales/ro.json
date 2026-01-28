@@ -40,7 +40,8 @@
     "service": "Serviciu",
     "upcoming": "Viitor",
     "thisWeek": "Această săptămână",
-    "total": "Total"
+    "total": "Total",
+    "month": "lună"
   },
   "auth": {
     "login": "Autentificare",
@@ -293,5 +294,37 @@
     "serverError": "Eroare de server",
     "networkError": "Eroare de rețea",
     "validationError": "Eroare de validare"
+  },
+  "landing": {
+    "systemOnline": "SISTEM ONLINE",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "Transformă mesajele tale de WhatsApp în programări confirmate. Filtrează curioși. Protejează-ți siguranța.",
+    "accessSystem": "ACCESEAZĂ SISTEMUL",
+    "encryptedConnection": "Conexiune criptată stabilită...",
+    "proofOfValue": "DOVADA DE VALOARE",
+    "keyStats": "STATISTICI CHEIE",
+    "stat1Label": "Programări Gestionate",
+    "stat2Label": "Clienți Periculoși Blocați",
+    "stat3Label": "Mesaje Stocate",
+    "secretFeatures": "CARACTERISTICI SECRETE",
+    "featuresTitle": "MODULE DE SISTEM",
+    "feature1Title": "PILOT AUTOMAT",
+    "feature1Desc": "Botul cunoaște ratele și orele tale. Răspunde pentru tine în modul SMS uman.",
+    "feature2Title": "VERIFICARE DUBLĂ ADRESĂ",
+    "feature2Desc": "Adresa exactă se dezvăluie doar cu 15 minute înainte de programare. Siguranță maximă.",
+    "feature3Title": "CONTROL FANTOMĂ",
+    "feature3Desc": "Raportează no-shows. După 2 absențe, clientul este interzis din rețea.",
+    "feature4Title": "SCUTAR SIGURANȚĂ",
+    "feature4Desc": "Beneficiază de o listă neagră comună de toată comunitatea împotriva clienților violenți.",
+    "securitySection": "SECURITATE ȘI CONFIDENȚIALITATE",
+    "privacyTitle": "INSIGNE DE ÎNCREDERE",
+    "badge1Desc": "Niciun mesaj nu este stocat pe serverele noastre.",
+    "badge2Desc": "Conversații criptate prin WhatsApp.",
+    "badge3Desc": "Bot și interfață disponibile în 11 limbi.",
+    "businessCase": "RENTABILITATE",
+    "businessDesc": "La €50/lună, ChatSlot este angajatul tău cel mai ieftin. Niciodată nu doarme, niciodată nu greșește și îți protejează mijloacele de trai.",
+    "crackTheCode": "Crack the code.",
+    "footer": "Toate drepturile rezervate."
   }
 }

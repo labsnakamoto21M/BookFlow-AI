@@ -40,7 +40,8 @@
     "service": "Servizio",
     "upcoming": "Prossimo",
     "thisWeek": "Questa settimana",
-    "total": "Totale"
+    "total": "Totale",
+    "month": "mese"
   },
   "auth": {
     "login": "Accedi",
@@ -293,5 +294,37 @@
     "serverError": "Errore del server",
     "networkError": "Errore di rete",
     "validationError": "Errore di validazione"
+  },
+  "landing": {
+    "systemOnline": "SISTEMA ONLINE",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "Trasforma i tuoi messaggi WhatsApp in appuntamenti confermati. Filtra i curiosi. Proteggi la tua sicurezza.",
+    "accessSystem": "ACCEDI AL SISTEMA",
+    "encryptedConnection": "Connessione crittografata stabilita...",
+    "proofOfValue": "PROVA DI VALORE",
+    "keyStats": "STATISTICHE CHIAVE",
+    "stat1Label": "Appuntamenti Gestiti",
+    "stat2Label": "Clienti Pericolosi Bloccati",
+    "stat3Label": "Messaggi Archiviati",
+    "secretFeatures": "FUNZIONI SEGRETE",
+    "featuresTitle": "MODULI DI SISTEMA",
+    "feature1Title": "AUTOPILOTA",
+    "feature1Desc": "Il bot conosce i tuoi tariffe e orari. Risponde per te in modalità SMS simile agli umani.",
+    "feature2Title": "CONTROLLO DOPPIO INDIRIZZO",
+    "feature2Desc": "L'indirizzo esatto viene rivelato solo 15 minuti prima dell'appuntamento. Massima sicurezza.",
+    "feature3Title": "CONTROLLO FANTASMA",
+    "feature3Desc": "Segnala i no-show. Dopo 2 assenze, il cliente viene bandito dalla rete.",
+    "feature4Title": "SCUDO DI SICUREZZA",
+    "feature4Desc": "Beneficia di una lista nera condivisa dall'intera comunità contro i clienti violenti.",
+    "securitySection": "SICUREZZA E PRIVACY",
+    "privacyTitle": "BADGE DI FIDUCIA",
+    "badge1Desc": "Nessun messaggio viene archiviato sui nostri server.",
+    "badge2Desc": "Conversazioni crittografate tramite WhatsApp.",
+    "badge3Desc": "Bot e interfaccia disponibili in 11 lingue.",
+    "businessCase": "REDDITIVITÀ",
+    "businessDesc": "A €50/mese, ChatSlot è il tuo dipendente più economico. Non dorme mai, non commette mai errori e protegge la tua sussistenza.",
+    "crackTheCode": "Crack the code.",
+    "footer": "Tutti i diritti riservati."
   }
 }

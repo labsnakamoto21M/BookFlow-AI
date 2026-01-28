@@ -40,7 +40,8 @@
     "service": "服务",
     "upcoming": "即将来临",
     "thisWeek": "本周",
-    "total": "总计"
+    "total": "总计",
+    "month": "月"
   },
   "auth": {
     "login": "登录",
@@ -293,5 +294,37 @@
     "serverError": "服务器错误",
     "networkError": "网络错误",
     "validationError": "验证错误"
+  },
+  "landing": {
+    "systemOnline": "系统在线",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "将您的 WhatsApp 消息转换为已确认的约会。筛选好奇者。保护您的安全。",
+    "accessSystem": "访问系统",
+    "encryptedConnection": "加密连接已建立...",
+    "proofOfValue": "价值证明",
+    "keyStats": "关键统计数据",
+    "stat1Label": "管理的约会",
+    "stat2Label": "被屏蔽的危险客户",
+    "stat3Label": "存储的消息",
+    "secretFeatures": "秘密功能",
+    "featuresTitle": "系统模块",
+    "feature1Title": "自动驾驶仪",
+    "feature1Desc": "机器人了解您的费率和时间。它以类似人类的短信模式为您回复。",
+    "feature2Title": "双重检查地址",
+    "feature2Desc": "确切地址仅在约会前15分钟显示。最大安全性。",
+    "feature3Title": "幽灵控制",
+    "feature3Desc": "报告缺席。2次缺席后，客户将被从网络中禁止。",
+    "feature4Title": "安全盾牌",
+    "feature4Desc": "受益于整个社区共享的黑名单，针对暴力客户。",
+    "securitySection": "安全和隐私",
+    "privacyTitle": "信任徽章",
+    "badge1Desc": "我们的服务器上不存储任何消息。",
+    "badge2Desc": "通过 WhatsApp 加密的对话。",
+    "badge3Desc": "支持 11 种语言的机器人和界面。",
+    "businessCase": "盈利能力",
+    "businessDesc": "以每月 €50 的价格，ChatSlot 是您最便宜的员工。它永不睡眠，从不出错，并保护您的生计。",
+    "crackTheCode": "Crack the code.",
+    "footer": "版权所有。"
   }
 }

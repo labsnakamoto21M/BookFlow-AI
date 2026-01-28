@@ -40,7 +40,8 @@
     "service": "Shërbimi",
     "upcoming": "Ardhshëm",
     "thisWeek": "Këtë javë",
-    "total": "Gjithsej"
+    "total": "Gjithsej",
+    "month": "muaj"
   },
   "auth": {
     "login": "Hyr",
@@ -293,5 +294,37 @@
     "serverError": "Gabim serveri",
     "networkError": "Gabim rrjeti",
     "validationError": "Gabim validimi"
+  },
+  "landing": {
+    "systemOnline": "SISTEMI ONLINE",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "Shndërroje mesazhet e tua të WhatsApp në takime të konfirmuara. Filtro të kuriozët. Mbro siguresinë tënde.",
+    "accessSystem": "AKSESU SISTEMIN",
+    "encryptedConnection": "Lidhja e enkriptuar u vendos...",
+    "proofOfValue": "PROVA E VLERËS",
+    "keyStats": "STATISTIKAT KYÇE",
+    "stat1Label": "Takimet e Menaxhuara",
+    "stat2Label": "Klientët e Rrezikshëm të Bllokuar",
+    "stat3Label": "Mesazhet e Ruajtur",
+    "secretFeatures": "KARAKTERISTIKA SEKRETE",
+    "featuresTitle": "MODULET E SISTEMIT",
+    "feature1Title": "AUTOPILOT",
+    "feature1Desc": "Boti njeh tarifat dhe orët e tua. Përgjigjet për ty në modalitetin SMS njerëzor.",
+    "feature2Title": "KONTROLLO ADRESËN DY HERË",
+    "feature2Desc": "Adresa e saktë zbulohet vetëm 15 minuta para takimit. Sigurimi maksimal.",
+    "feature3Title": "KONTROLLI I FANTAZMËS",
+    "feature3Desc": "Raporto mos-shfaqjen. Pas 2 mungesash, klienti ndalon në rrjet.",
+    "feature4Title": "MBUROJA E SIGURISË",
+    "feature4Desc": "Përfitoni nga lista e zezë e përbashkët nga e gjithë komuniteti kundër klientëve të dhunshëm.",
+    "securitySection": "SIGURIA DHE PRIVATËSIA",
+    "privacyTitle": "SHENJA TË BESIMIT",
+    "badge1Desc": "Asnjë mesazh nuk ruhet në serverët tanë.",
+    "badge2Desc": "Biseda të enkriptuara përmes WhatsApp.",
+    "badge3Desc": "Boti dhe ndërfaqja në dispozicion në 11 gjuhë.",
+    "businessCase": "PËRFITIMI",
+    "businessDesc": "Me €50/muaj, ChatSlot është punonjësi yt më i lirë. Nuk fle kurrë, nuk bën gabime dhe mbron qenien tënde.",
+    "crackTheCode": "Crack the code.",
+    "footer": "Të gjitha të drejtat e rezervuara."
   }
 }

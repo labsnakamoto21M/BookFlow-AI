@@ -40,7 +40,8 @@
     "service": "Service",
     "upcoming": "Kommend",
     "thisWeek": "Diese Woche",
-    "total": "Gesamt"
+    "total": "Gesamt",
+    "month": "Monat"
   },
   "auth": {
     "login": "Anmelden",
@@ -293,5 +294,37 @@
     "serverError": "Serverfehler",
     "networkError": "Netzwerkfehler",
     "validationError": "Validierungsfehler"
+  },
+  "landing": {
+    "systemOnline": "SYSTEM ONLINE",
+    "heroTitle1": "CHATSLOT : CRACK THE SYSTEM.",
+    "heroTitle2": "AUTOMATE THE HUSTLE.",
+    "heroSubtitle": "Wandeln Sie Ihre WhatsApp-Nachrichten in bestätigte Termine um. Filtern Sie Neugierige. Schützen Sie Ihre Sicherheit.",
+    "accessSystem": "SYSTEM ZUGREIFEN",
+    "encryptedConnection": "Verschlüsselte Verbindung hergestellt...",
+    "proofOfValue": "WERTSNACHWEIS",
+    "keyStats": "WICHTIGE STATISTIKEN",
+    "stat1Label": "Termine Verwaltet",
+    "stat2Label": "Gefährliche Kunden Blockiert",
+    "stat3Label": "Nachrichten Gespeichert",
+    "secretFeatures": "GEHEIME FUNKTIONEN",
+    "featuresTitle": "SYSTEMMODULE",
+    "feature1Title": "AUTOPILOT",
+    "feature1Desc": "Der Bot kennt Ihre Sätze und Öffnungszeiten. Er antwortet für Sie im SMS-ähnlichen Modus.",
+    "feature2Title": "ADRESSE DOPPELT ÜBERPRÜFEN",
+    "feature2Desc": "Die genaue Adresse wird erst 15 Minuten vor dem Termin preisgegeben. Maximale Sicherheit.",
+    "feature3Title": "GEISTERKONTROLLE",
+    "feature3Desc": "Melden Sie No-Shows. Nach 2 Abwesenheiten wird der Kunde aus dem Netz ausgeschlossen.",
+    "feature4Title": "SICHERHEITSSCHILD",
+    "feature4Desc": "Profitieren Sie von einer von der gesamten Gemeinschaft geteilten schwarzen Liste gegen gewalttätige Kunden.",
+    "securitySection": "SICHERHEIT & DATENSCHUTZ",
+    "privacyTitle": "VERTRAUENSABZEICHEN",
+    "badge1Desc": "Auf unseren Servern werden keine Nachrichten gespeichert.",
+    "badge2Desc": "Gespräche verschlüsselt über WhatsApp.",
+    "badge3Desc": "Bot und Oberfläche in 11 Sprachen verfügbar.",
+    "businessCase": "RENTABILITÄT",
+    "businessDesc": "Mit €50/Monat ist ChatSlot Ihr günstigster Arbeitnehmer. Er schläft nie, macht nie Fehler und schützt Ihren Lebensunterhalt.",
+    "crackTheCode": "Crack the code.",
+    "footer": "Alle Rechte vorbehalten."
   }
 }
