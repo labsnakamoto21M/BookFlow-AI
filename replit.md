@@ -56,6 +56,16 @@ Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Ma
 5. **Business Hours**: Configurable weekly availability schedule
 6. **Availability Modes**: ACTIVE (full bot), AWAY (single auto-reply), GHOST (silent)
 7. **Anti-ban Censorship**: Automatic text obfuscation for sensitive content
+8. **Internationalization (i18n)**: Complete multi-language support for 11 languages
+
+### Internationalization System
+- **Framework**: i18next with react-i18next
+- **Supported Languages**: FR (French - default), NL (Dutch), EN (English), ES (Spanish), RO (Romanian), PT (Portuguese), DE (German), SQ (Albanian), HU (Hungarian), IT (Italian), ZH (Chinese)
+- **Auto-Detection**: Browser language detection via localStorage → navigator → htmlTag
+- **Storage**: Language preference stored in localStorage under key "chatslot-language"
+- **Translation Files**: Located in `client/src/locales/*.json` (fr.json, nl.json, en.json, etc.)
+- **UI Selector**: Terminal-style language selector [FR] [NL] [EN] etc. in sidebar footer
+- **Date Localization**: date-fns locales integrated for proper date formatting in each language
 
 ## External Dependencies
 
@@ -71,6 +81,8 @@ Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Ma
 - `helmet`: Security middleware
 - `node-cron`: Scheduled task execution
 - `date-fns`: Date manipulation utilities
+- `i18next` / `react-i18next`: Internationalization framework
+- `i18next-browser-languagedetector`: Automatic language detection
 
 ### Environment Variables Required
 - `DATABASE_URL`: PostgreSQL connection string
