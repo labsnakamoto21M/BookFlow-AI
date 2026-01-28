@@ -74,11 +74,19 @@ class WhatsAppManager {
       return this.sessions.get(providerId)!;
     }
 
+    // Ensure session directory exists with write permissions
+    const authPath = "./.wwebjs_auth";
+    if (!fs.existsSync(authPath)) {
+      fs.mkdirSync(authPath, { recursive: true });
+      console.log("[WA-SYSTEM] Session directory created:", authPath);
+    }
+
     const client = new Client({
       authStrategy: new LocalAuth({ 
         clientId: providerId,
-        dataPath: "./.wwebjs_auth"
+        dataPath: authPath
       }),
+      authTimeoutMs: 90000, // 90 seconds timeout for QR code generation
       puppeteer: {
         headless: true,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
@@ -89,9 +97,12 @@ class WhatsAppManager {
           "--disable-accelerated-2d-canvas",
           "--no-first-run",
           "--no-zygote",
+          "--single-process", // CRUCIAL for Replit
           "--disable-gpu",
+          "--disable-canvas-aa",
+          "--disable-2d-canvas-clip-utils",
+          "--disable-gl-drawing-for-tests",
           "--disable-extensions",
-          "--single-process",
           "--disable-background-networking",
           "--disable-default-apps",
           "--disable-sync",
@@ -177,10 +188,11 @@ class WhatsAppManager {
 
     try {
       const chromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
-      console.log(`[WhatsApp] Démarrage de Puppeteer avec Chromium: ${chromiumPath}`);
-      console.log(`[WhatsApp] Initialisation du client pour provider: ${providerId}`);
+      console.log(`[WA-SYSTEM] Démarrage de Puppeteer avec Chromium: ${chromiumPath}`);
+      console.log(`[WA-SYSTEM] Navigateur lancé, attente du chargement WhatsApp Web...`);
+      console.log(`[WA-SYSTEM] Timeout configuré: 90 secondes - Provider: ${providerId}`);
       await client.initialize();
-      console.log(`[WhatsApp] Client initialisé avec succès pour provider: ${providerId}`);
+      console.log(`[WA-SYSTEM] Client initialisé avec succès pour provider: ${providerId}`);
     } catch (error: any) {
       console.error(`[WhatsApp] ERREUR d'initialisation Puppeteer pour provider ${providerId}:`, error);
       console.error(`[WhatsApp] Message d'erreur:`, error?.message || 'Unknown error');

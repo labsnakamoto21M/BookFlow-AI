@@ -206,18 +206,24 @@ export default function WhatsAppPage() {
               </div>
             ) : (
               <div className="text-center space-y-6">
-                <div className="h-32 w-32 mx-auto rounded-full bg-muted flex items-center justify-center">
-                  <QrCode className="h-16 w-16 text-muted-foreground" />
+                <div className="h-32 w-32 mx-auto rounded-full bg-black border-2 border-[#39FF14] flex items-center justify-center animate-pulse">
+                  <QrCode className="h-16 w-16 text-[#39FF14]" />
                 </div>
-                <div className="space-y-2">
-                  <p className="font-medium">Chargement du QR Code...</p>
-                  <p className="text-sm text-muted-foreground">
-                    Le QR Code apparaitra dans quelques instants
+                <div className="space-y-3">
+                  <p className="font-mono text-[#39FF14] text-lg font-bold tracking-wider">
+                    [ SYSTEM_BOOTING... ]
+                  </p>
+                  <p className="font-mono text-[#39FF14]/70 text-sm">
+                    [ PLEASE_WAIT_UP_TO_60S ]
+                  </p>
+                  <p className="text-sm text-muted-foreground max-w-xs">
+                    Initialisation du navigateur securise en cours...
                   </p>
                 </div>
                 <Button
                   variant="outline"
                   onClick={() => refetch()}
+                  className="border-[#39FF14]/50 text-[#39FF14] hover:bg-[#39FF14]/10"
                   data-testid="button-retry"
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
