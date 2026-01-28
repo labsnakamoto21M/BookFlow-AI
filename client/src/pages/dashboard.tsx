@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,9 +14,13 @@ import {
   ShieldAlert
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
-import { format, isToday, isTomorrow, parseISO } from "date-fns";
-import { fr } from "date-fns/locale";
+import { format, isToday, isTomorrow, parseISO, type Locale } from "date-fns";
+import { fr, nl, enUS, es, ro, pt, de, sq, hu, it, zhCN } from "date-fns/locale";
 import type { Appointment, Service, ProviderProfile } from "@shared/schema";
+
+const localeMap: Record<string, Locale> = {
+  fr, nl, en: enUS, es, ro, pt, de, sq, hu, it, zh: zhCN
+};
 
 interface DashboardStats {
   todayAppointments: number;
@@ -32,6 +37,9 @@ interface UpcomingAppointment extends Appointment {
 }
 
 export default function DashboardPage() {
+  const { t, i18n } = useTranslation();
+  const currentLocale = localeMap[i18n.language?.substring(0, 2)] || fr;
+
   const { data: profile, isLoading: profileLoading } = useQuery<ProviderProfile>({
     queryKey: ["/api/provider/profile"],
   });
@@ -46,35 +54,35 @@ export default function DashboardPage() {
 
   const statCards = [
     {
-      title: "RDV aujourd'hui",
+      title: t("dashboard.todayAppointments"),
       value: stats?.todayAppointments ?? 0,
       icon: Calendar,
       color: "text-primary",
       bgColor: "bg-primary/10",
     },
     {
-      title: "RDV cette semaine",
+      title: t("dashboard.weekAppointments"),
       value: stats?.weekAppointments ?? 0,
       icon: TrendingUp,
       color: "text-blue-600",
       bgColor: "bg-blue-100 dark:bg-blue-900/30",
     },
     {
-      title: "Terminés ce mois",
+      title: t("dashboard.completedThisMonth"),
       value: stats?.completedThisMonth ?? 0,
       icon: CheckCircle,
       color: "text-green-600",
       bgColor: "bg-green-100 dark:bg-green-900/30",
     },
     {
-      title: "No-shows ce mois",
+      title: t("dashboard.noShowsThisMonth"),
       value: stats?.noShowsThisMonth ?? 0,
       icon: XCircle,
       color: "text-red-600",
       bgColor: "bg-red-100 dark:bg-red-900/30",
     },
     {
-      title: "Profils dangereux ecartes",
+      title: t("dashboard.dangerousFiltered"),
       value: stats?.dangerousClientsFiltered ?? 0,
       icon: ShieldAlert,
       color: "text-red-500",
@@ -86,12 +94,12 @@ export default function DashboardPage() {
   const formatAppointmentDate = (dateStr: string | Date) => {
     const date = typeof dateStr === 'string' ? parseISO(dateStr) : dateStr;
     if (isToday(date)) {
-      return `Aujourd'hui à ${format(date, "HH:mm", { locale: fr })}`;
+      return `${t("common.today")} ${format(date, "HH:mm", { locale: currentLocale })}`;
     }
     if (isTomorrow(date)) {
-      return `Demain à ${format(date, "HH:mm", { locale: fr })}`;
+      return `${t("common.tomorrow")} ${format(date, "HH:mm", { locale: currentLocale })}`;
     }
-    return format(date, "EEEE d MMM à HH:mm", { locale: fr });
+    return format(date, "EEEE d MMM HH:mm", { locale: currentLocale });
   };
 
   return (
@@ -99,9 +107,9 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Tableau de bord</h1>
+          <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">{t("sidebar.dashboard")}</h1>
           <p className="text-muted-foreground">
-            Bienvenue sur ChatSlot{profile?.businessName ? `, ${profile.businessName}` : ""}
+            {t("dashboard.welcome")}{profile?.businessName ? `, ${profile.businessName}` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -110,12 +118,12 @@ export default function DashboardPage() {
           ) : profile?.whatsappConnected ? (
             <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
               <SiWhatsapp className="h-3 w-3 mr-1" />
-              WhatsApp connecté
+              {t("whatsapp.connected")}
             </Badge>
           ) : (
             <Badge variant="secondary">
               <SiWhatsapp className="h-3 w-3 mr-1" />
-              WhatsApp non connecté
+              {t("whatsapp.disconnected")}
             </Badge>
           )}
         </div>
@@ -137,7 +145,7 @@ export default function DashboardPage() {
                     </p>
                   )}
                   {(stat as any).special && stat.value > 0 && (
-                    <p className="text-xs text-red-400">Votre securite: protection active</p>
+                    <p className="text-xs text-red-400">{t("dashboard.protectionActive")}</p>
                   )}
                 </div>
                 <div className={`h-12 w-12 rounded-lg ${stat.bgColor} flex items-center justify-center`}>
@@ -154,10 +162,10 @@ export default function DashboardPage() {
         {/* Upcoming Appointments */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
-            <CardTitle className="text-lg font-semibold">Prochains rendez-vous</CardTitle>
+            <CardTitle className="text-lg font-semibold">{t("dashboard.upcomingAppointments")}</CardTitle>
             <Badge variant="secondary" className="text-xs">
               <Calendar className="h-3 w-3 mr-1" />
-              À venir
+              {t("common.upcoming")}
             </Badge>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -184,7 +192,7 @@ export default function DashboardPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{apt.clientName || apt.clientPhone}</p>
                     <p className="text-sm text-muted-foreground truncate">
-                      {apt.service?.name || "Service"} • {apt.duration} min
+                      {apt.service?.name || t("common.service")} • {apt.duration} min
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -195,7 +203,7 @@ export default function DashboardPage() {
                       variant={apt.status === "confirmed" ? "default" : "secondary"} 
                       className="text-xs mt-1"
                     >
-                      {apt.status === "confirmed" ? "Confirmé" : apt.status}
+                      {apt.status === "confirmed" ? t("agenda.confirmed") : apt.status}
                     </Badge>
                   </div>
                 </div>
@@ -203,8 +211,8 @@ export default function DashboardPage() {
             ) : (
               <div className="text-center py-8 text-muted-foreground">
                 <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>Aucun rendez-vous à venir</p>
-                <p className="text-sm mt-1">Les réservations de vos clients apparaîtront ici</p>
+                <p>{t("dashboard.noAppointments")}</p>
+                <p className="text-sm mt-1">{t("dashboard.appointmentsWillAppear")}</p>
               </div>
             )}
           </CardContent>
@@ -215,10 +223,10 @@ export default function DashboardPage() {
           {/* Messages Stats */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
-              <CardTitle className="text-lg font-semibold">Activité WhatsApp</CardTitle>
+              <CardTitle className="text-lg font-semibold">{t("dashboard.whatsappActivity")}</CardTitle>
               <Badge variant="secondary" className="text-xs">
                 <MessageSquare className="h-3 w-3 mr-1" />
-                Cette semaine
+                {t("common.thisWeek")}
               </Badge>
             </CardHeader>
             <CardContent>
@@ -234,7 +242,7 @@ export default function DashboardPage() {
                       {stats?.messagesThisWeek ?? 0}
                     </p>
                   )}
-                  <p className="text-muted-foreground">messages échangés</p>
+                  <p className="text-muted-foreground">{t("dashboard.messagesExchanged")}</p>
                 </div>
               </div>
             </CardContent>
@@ -243,10 +251,10 @@ export default function DashboardPage() {
           {/* Client Stats */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
-              <CardTitle className="text-lg font-semibold">Clients</CardTitle>
+              <CardTitle className="text-lg font-semibold">{t("dashboard.clients")}</CardTitle>
               <Badge variant="secondary" className="text-xs">
                 <Users className="h-3 w-3 mr-1" />
-                Total
+                {t("common.total")}
               </Badge>
             </CardHeader>
             <CardContent>
@@ -262,7 +270,7 @@ export default function DashboardPage() {
                       {stats?.totalClients ?? 0}
                     </p>
                   )}
-                  <p className="text-muted-foreground">clients uniques</p>
+                  <p className="text-muted-foreground">{t("dashboard.uniqueClients")}</p>
                 </div>
               </div>
             </CardContent>

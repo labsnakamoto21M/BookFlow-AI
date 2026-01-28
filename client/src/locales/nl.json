@@ -36,7 +36,11 @@
     "active": "Actief",
     "inactive": "Inactief",
     "enabled": "Ingeschakeld",
-    "disabled": "Uitgeschakeld"
+    "disabled": "Uitgeschakeld",
+    "service": "Dienst",
+    "upcoming": "Komend",
+    "thisWeek": "Deze week",
+    "total": "Totaal"
   },
   "auth": {
     "login": "Inloggen",
@@ -79,11 +83,17 @@
   },
   "dashboard": {
     "title": "Dashboard",
+    "welcome": "Welkom bij ChatSlot",
     "systemStatus": "Systeemstatus",
     "whatsappStatus": "WhatsApp Status",
     "connected": "Verbonden",
     "disconnected": "Niet verbonden",
     "todayAppointments": "Afspraken vandaag",
+    "weekAppointments": "Afspraken deze week",
+    "completedThisMonth": "Afgerond deze maand",
+    "noShowsThisMonth": "No-shows deze maand",
+    "dangerousFiltered": "Gevaarlijke profielen gefilterd",
+    "protectionActive": "Uw veiligheid: bescherming actief",
     "confirmedAppointments": "Bevestigde afspraken",
     "pendingAppointments": "In afwachting",
     "cancelledAppointments": "Geannuleerd",
@@ -93,6 +103,12 @@
     "weeklyStats": "Weekstatistieken",
     "monthlyStats": "Maandstatistieken",
     "upcomingAppointments": "Komende afspraken",
+    "noAppointments": "Geen komende afspraken",
+    "appointmentsWillAppear": "Reserveringen van uw klanten verschijnen hier",
+    "whatsappActivity": "WhatsApp-activiteit",
+    "messagesExchanged": "berichten uitgewisseld",
+    "clients": "Klanten",
+    "uniqueClients": "unieke klanten",
     "recentActivity": "Recente activiteit",
     "quickActions": "Snelle acties",
     "viewAll": "Alles bekijken"

@@ -36,7 +36,11 @@
     "active": "Active",
     "inactive": "Inactive",
     "enabled": "Enabled",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "service": "Service",
+    "upcoming": "Upcoming",
+    "thisWeek": "This Week",
+    "total": "Total"
   },
   "auth": {
     "login": "Login",
@@ -79,11 +83,17 @@
   },
   "dashboard": {
     "title": "Dashboard",
+    "welcome": "Welcome to ChatSlot",
     "systemStatus": "System Status",
     "whatsappStatus": "WhatsApp Status",
     "connected": "Connected",
     "disconnected": "Disconnected",
     "todayAppointments": "Today's Appointments",
+    "weekAppointments": "This Week's Appointments",
+    "completedThisMonth": "Completed This Month",
+    "noShowsThisMonth": "No-Shows This Month",
+    "dangerousFiltered": "Dangerous Profiles Filtered",
+    "protectionActive": "Your Safety: Protection Active",
     "confirmedAppointments": "Confirmed Appointments",
     "pendingAppointments": "Pending",
     "cancelledAppointments": "Cancelled",
@@ -93,6 +103,12 @@
     "weeklyStats": "Weekly Stats",
     "monthlyStats": "Monthly Stats",
     "upcomingAppointments": "Upcoming Appointments",
+    "noAppointments": "No Upcoming Appointments",
+    "appointmentsWillAppear": "Your clients' bookings will appear here",
+    "whatsappActivity": "WhatsApp Activity",
+    "messagesExchanged": "messages exchanged",
+    "clients": "Clients",
+    "uniqueClients": "unique clients",
     "recentActivity": "Recent Activity",
     "quickActions": "Quick Actions",
     "viewAll": "View All"

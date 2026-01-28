@@ -36,7 +36,11 @@
     "active": "Activ",
     "inactive": "Inactiv",
     "enabled": "Activat",
-    "disabled": "Dezactivat"
+    "disabled": "Dezactivat",
+    "service": "Serviciu",
+    "upcoming": "Viitor",
+    "thisWeek": "Această săptămână",
+    "total": "Total"
   },
   "auth": {
     "login": "Autentificare",
@@ -79,11 +83,17 @@
   },
   "dashboard": {
     "title": "Panou de control",
+    "welcome": "Binevenit în ChatSlot",
     "systemStatus": "Stare sistem",
     "whatsappStatus": "Stare WhatsApp",
     "connected": "Conectat",
     "disconnected": "Deconectat",
     "todayAppointments": "Programări azi",
+    "weekAppointments": "Programări această săptămână",
+    "completedThisMonth": "Finalizate luna aceasta",
+    "noShowsThisMonth": "No-shows luna aceasta",
+    "dangerousFiltered": "Profiluri periculoase filtrate",
+    "protectionActive": "Siguranța dvs.: protecție activă",
     "confirmedAppointments": "Programări confirmate",
     "pendingAppointments": "În așteptare",
     "cancelledAppointments": "Anulate",
@@ -93,6 +103,12 @@
     "weeklyStats": "Statistici săptămânale",
     "monthlyStats": "Statistici lunare",
     "upcomingAppointments": "Programări viitoare",
+    "noAppointments": "Nicio programare viitoare",
+    "appointmentsWillAppear": "Rezervările clienților dvs. vor apărea aici",
+    "whatsappActivity": "Activitate WhatsApp",
+    "messagesExchanged": "mesaje schimbate",
+    "clients": "Clienți",
+    "uniqueClients": "clienți unici",
     "recentActivity": "Activitate recentă",
     "quickActions": "Acțiuni rapide",
     "viewAll": "Vezi tot"

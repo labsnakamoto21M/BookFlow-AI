@@ -36,7 +36,11 @@
     "active": "Activo",
     "inactive": "Inactivo",
     "enabled": "Activado",
-    "disabled": "Desactivado"
+    "disabled": "Desactivado",
+    "service": "Servicio",
+    "upcoming": "Próximo",
+    "thisWeek": "Esta semana",
+    "total": "Total"
   },
   "auth": {
     "login": "Iniciar sesión",
@@ -79,11 +83,17 @@
   },
   "dashboard": {
     "title": "Panel de control",
+    "welcome": "Bienvenida a ChatSlot",
     "systemStatus": "Estado del sistema",
     "whatsappStatus": "Estado de WhatsApp",
     "connected": "Conectado",
     "disconnected": "Desconectado",
     "todayAppointments": "Citas de hoy",
+    "weekAppointments": "Citas esta semana",
+    "completedThisMonth": "Completadas este mes",
+    "noShowsThisMonth": "No-shows este mes",
+    "dangerousFiltered": "Perfiles peligrosos filtrados",
+    "protectionActive": "Tu seguridad: protección activa",
     "confirmedAppointments": "Citas confirmadas",
     "pendingAppointments": "Pendientes",
     "cancelledAppointments": "Canceladas",
@@ -93,6 +103,12 @@
     "weeklyStats": "Estadísticas semanales",
     "monthlyStats": "Estadísticas mensuales",
     "upcomingAppointments": "Próximas citas",
+    "noAppointments": "Sin citas próximas",
+    "appointmentsWillAppear": "Las reservas de tus clientes aparecerán aquí",
+    "whatsappActivity": "Actividad de WhatsApp",
+    "messagesExchanged": "mensajes intercambiados",
+    "clients": "Clientes",
+    "uniqueClients": "clientes únicos",
     "recentActivity": "Actividad reciente",
     "quickActions": "Acciones rápidas",
     "viewAll": "Ver todo"

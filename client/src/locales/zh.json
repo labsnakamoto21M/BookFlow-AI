@@ -36,7 +36,11 @@
     "active": "活跃",
     "inactive": "非活跃",
     "enabled": "已启用",
-    "disabled": "已禁用"
+    "disabled": "已禁用",
+    "service": "服务",
+    "upcoming": "即将来临",
+    "thisWeek": "本周",
+    "total": "总计"
   },
   "auth": {
     "login": "登录",
@@ -79,11 +83,17 @@
   },
   "dashboard": {
     "title": "控制面板",
+    "welcome": "欢迎使用 ChatSlot",
     "systemStatus": "系统状态",
     "whatsappStatus": "WhatsApp 状态",
     "connected": "已连接",
     "disconnected": "未连接",
     "todayAppointments": "今日预约",
+    "weekAppointments": "本周预约",
+    "completedThisMonth": "本月完成",
+    "noShowsThisMonth": "本月爽约",
+    "dangerousFiltered": "危险资料已过滤",
+    "protectionActive": "您的安全：保护已激活",
     "confirmedAppointments": "已确认预约",
     "pendingAppointments": "待处理",
     "cancelledAppointments": "已取消",
@@ -93,6 +103,12 @@
     "weeklyStats": "周统计",
     "monthlyStats": "月统计",
     "upcomingAppointments": "即将到来的预约",
+    "noAppointments": "暂无即将到来的预约",
+    "appointmentsWillAppear": "您的客户预订将显示在此处",
+    "whatsappActivity": "WhatsApp 活动",
+    "messagesExchanged": "消息交换数",
+    "clients": "客户",
+    "uniqueClients": "独特客户数",
     "recentActivity": "最近活动",
     "quickActions": "快捷操作",
     "viewAll": "查看全部"

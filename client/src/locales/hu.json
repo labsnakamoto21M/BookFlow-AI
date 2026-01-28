@@ -36,7 +36,11 @@
     "active": "Aktív",
     "inactive": "Inaktív",
     "enabled": "Bekapcsolva",
-    "disabled": "Kikapcsolva"
+    "disabled": "Kikapcsolva",
+    "service": "Szolgáltatás",
+    "upcoming": "Közelgő",
+    "thisWeek": "Ez a hét",
+    "total": "Összesen"
   },
   "auth": {
     "login": "Bejelentkezés",
@@ -79,11 +83,17 @@
   },
   "dashboard": {
     "title": "Vezérlőpult",
+    "welcome": "Üdvözlünk a ChatSlotban",
     "systemStatus": "Rendszerállapot",
     "whatsappStatus": "WhatsApp állapot",
     "connected": "Kapcsolódva",
     "disconnected": "Nincs kapcsolat",
     "todayAppointments": "Mai időpontok",
+    "weekAppointments": "Ezen a héten időpontok",
+    "completedThisMonth": "Befejezve ebben a hónapban",
+    "noShowsThisMonth": "No-show-k ebben a hónapban",
+    "dangerousFiltered": "Veszélyes profilok szűrve",
+    "protectionActive": "Az Ön biztonsága: védelem aktív",
     "confirmedAppointments": "Megerősített időpontok",
     "pendingAppointments": "Függőben",
     "cancelledAppointments": "Lemondott",
@@ -93,6 +103,12 @@
     "weeklyStats": "Heti statisztikák",
     "monthlyStats": "Havi statisztikák",
     "upcomingAppointments": "Következő időpontok",
+    "noAppointments": "Nincsenek közelgő időpontok",
+    "appointmentsWillAppear": "Az Ön ügyfelei foglalásai itt jelennek meg",
+    "whatsappActivity": "WhatsApp tevékenység",
+    "messagesExchanged": "cserélt üzenetek",
+    "clients": "Ügyfelek",
+    "uniqueClients": "egyedi ügyfelek",
     "recentActivity": "Legutóbbi tevékenység",
     "quickActions": "Gyors műveletek",
     "viewAll": "Összes megtekintése"

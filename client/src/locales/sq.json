@@ -36,7 +36,11 @@
     "active": "Aktiv",
     "inactive": "Joaktiv",
     "enabled": "Aktivizuar",
-    "disabled": "Çaktivizuar"
+    "disabled": "Çaktivizuar",
+    "service": "Shërbimi",
+    "upcoming": "Ardhshëm",
+    "thisWeek": "Këtë javë",
+    "total": "Gjithsej"
   },
   "auth": {
     "login": "Hyr",
@@ -79,11 +83,17 @@
   },
   "dashboard": {
     "title": "Paneli",
+    "welcome": "Mirëseerdhe në ChatSlot",
     "systemStatus": "Statusi i sistemit",
     "whatsappStatus": "Statusi WhatsApp",
     "connected": "I lidhur",
     "disconnected": "I shkëputur",
     "todayAppointments": "Takimet e sotme",
+    "weekAppointments": "Takimet këtë javë",
+    "completedThisMonth": "Përfunduar këtë muaj",
+    "noShowsThisMonth": "No-shows këtë muaj",
+    "dangerousFiltered": "Profilet e rrezikshëm të filtruar",
+    "protectionActive": "Siguria juaj: mbrojtja aktive",
     "confirmedAppointments": "Takime të konfirmuara",
     "pendingAppointments": "Në pritje",
     "cancelledAppointments": "Të anuluara",
@@ -93,6 +103,12 @@
     "weeklyStats": "Statistika javore",
     "monthlyStats": "Statistika mujore",
     "upcomingAppointments": "Takimet e ardhshme",
+    "noAppointments": "Nuk ka takime të ardhshme",
+    "appointmentsWillAppear": "Rezervimet e klientëve tuaj do të shfaqen këtu",
+    "whatsappActivity": "Aktiviteti i WhatsApp",
+    "messagesExchanged": "mesazhe të shkëmbyer",
+    "clients": "Klientë",
+    "uniqueClients": "klientë unikë",
     "recentActivity": "Aktiviteti i fundit",
     "quickActions": "Veprime të shpejta",
     "viewAll": "Shiko të gjitha"
