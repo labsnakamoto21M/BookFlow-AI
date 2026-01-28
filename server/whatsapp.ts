@@ -117,6 +117,8 @@ class WhatsAppManager {
           "--disable-renderer-backgrounding",
           "--force-color-profile=srgb",
           "--disable-backgrounding-occluded-windows",
+          "--disk-cache-dir=/tmp/puppeteer-cache", // Force cache for faster loading
+          "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
         ],
       },
     });
@@ -155,6 +157,7 @@ class WhatsAppManager {
     this.sessions.set(providerId, session);
 
     client.on("qr", async (qr) => {
+      console.log('[DEBUG] Événement QR émis !');
       session.qrCode = await qrcode.toDataURL(qr);
       session.connected = false;
     });
@@ -193,6 +196,34 @@ class WhatsAppManager {
       console.log(`[WA-SYSTEM] Timeout configuré: 90 secondes - Provider: ${providerId}`);
       await client.initialize();
       console.log(`[WA-SYSTEM] Client initialisé avec succès pour provider: ${providerId}`);
+      
+      // Debug screenshot every 20 seconds
+      const startDebugScreenshots = async () => {
+        let screenshotCount = 0;
+        const maxScreenshots = 6; // 2 minutes of screenshots
+        const interval = setInterval(async () => {
+          try {
+            const page = await (client as any).pupPage;
+            if (page && !session.connected) {
+              screenshotCount++;
+              const filename = `debug_whatsapp_${screenshotCount}.png`;
+              await page.screenshot({ path: filename, fullPage: true });
+              console.log(`[DEBUG] Screenshot saved: ${filename}`);
+              if (screenshotCount >= maxScreenshots || session.connected) {
+                clearInterval(interval);
+                console.log('[DEBUG] Screenshot capture stopped');
+              }
+            } else if (session.connected) {
+              clearInterval(interval);
+              console.log('[DEBUG] Connected - stopping screenshots');
+            }
+          } catch (err: any) {
+            console.log('[DEBUG] Screenshot error:', err?.message);
+          }
+        }, 20000);
+      };
+      startDebugScreenshots();
+      
     } catch (error: any) {
       console.error(`[WhatsApp] ERREUR d'initialisation Puppeteer pour provider ${providerId}:`, error);
       console.error(`[WhatsApp] Message d'erreur:`, error?.message || 'Unknown error');
