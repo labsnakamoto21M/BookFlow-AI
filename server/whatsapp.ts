@@ -466,7 +466,13 @@ FONCTIONNALITES:
 - Si le client choisit "prive" ou "escort", propose les durees
 - Si le client choisit une duree, confirme et propose les extras
 - Si le client veut un rdv, donne les creneaux dispo avec numeros
-- Si le client choisit un creneau (ex: "14h" ou "3"), confirme le rdv
+- Si le client choisit un creneau (ex: "14h30" ou numero), confirme avec "ok cest note" et l'heure
+
+POUR CONFIRMER UN RDV:
+Quand le client choisit un creneau horaire, tu DOIS inclure exactement ce format dans ta reponse:
+[BOOKING:HH:MM] ou [BOOKING:DEMAIN:HH:MM]
+Exemple: si client dit "14h30" et c'est dispo, reponds: "ok cest note pour 14h30! [BOOKING:14:30] a tout a lheure"
+Exemple: si client dit "demain 15h", reponds: "parfait demain 15h [BOOKING:DEMAIN:15:00] a demain!"
 
 REGLES:
 - Ne jamais donner d'adresse avant confirmation de rdv
@@ -494,12 +500,62 @@ Reponds UNIQUEMENT au dernier message du client.`;
         temperature: 0.7,
       });
       
-      const aiResponse = completion.choices[0]?.message?.content || "desole je ne comprends pas, peux-tu reformuler?";
+      let aiResponse = completion.choices[0]?.message?.content || "desole je ne comprends pas, peux-tu reformuler?";
+      
+      const bookingMatch = aiResponse.match(/\[BOOKING:(DEMAIN:)?(\d{1,2}):(\d{2})\]/);
+      if (bookingMatch) {
+        const isTomorrow = !!bookingMatch[1];
+        const hour = parseInt(bookingMatch[2]);
+        const minute = parseInt(bookingMatch[3]);
+        
+        const appointmentDate = new Date();
+        if (isTomorrow) {
+          appointmentDate.setDate(appointmentDate.getDate() + 1);
+        }
+        appointmentDate.setHours(hour, minute, 0, 0);
+        
+        try {
+          const activeServices = services.filter(s => s.active);
+          const defaultService = activeServices[0];
+          
+          if (defaultService) {
+            const noteText = [
+              convState.type ? `Type: ${convState.type}` : "",
+              convState.extras.length > 0 ? `Extras: ${convState.extras.join(", ")}` : "",
+            ].filter(Boolean).join(". ");
+            
+            await storage.createAppointment({
+              providerId,
+              serviceId: defaultService.id,
+              clientPhone,
+              clientName: "",
+              appointmentDate,
+              duration: convState.duration || 60,
+              status: "confirmed",
+              notes: noteText || null,
+            });
+            
+            console.log(`[WA-AI] Created appointment for ${clientPhone} at ${format(appointmentDate, "HH:mm dd/MM")}`);
+          }
+          
+          this.updateConversationState(providerId, clientPhone, {
+            type: null,
+            duration: null,
+            basePrice: 0,
+            extras: [],
+            extrasTotal: 0,
+          });
+        } catch (bookingError) {
+          console.error("[WA-AI] Error creating appointment:", bookingError);
+        }
+        
+        aiResponse = aiResponse.replace(/\[BOOKING:(DEMAIN:)?(\d{1,2}):(\d{2})\]/, "").trim();
+      }
       
       convState.chatHistory.push({ role: "assistant", content: aiResponse });
       this.updateConversationState(providerId, clientPhone, { chatHistory: convState.chatHistory });
       
-      return aiResponse;
+      return this.censorText(aiResponse);
     } catch (error) {
       console.error("[WA-AI] Error generating AI response:", error);
       return "desole y'a eu un souci, reessaie stp";
@@ -856,6 +912,9 @@ Reponds UNIQUEMENT au dernier message du client.`;
       const now = new Date();
       if (slotTime > now) {
         const isBooked = existingAppointments.some(apt => {
+          if (apt.status === "cancelled" || apt.status === "no_show") {
+            return false;
+          }
           const aptTime = typeof apt.appointmentDate === "string" 
             ? parseISO(apt.appointmentDate) 
             : apt.appointmentDate;
