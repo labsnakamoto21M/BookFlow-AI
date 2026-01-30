@@ -15,6 +15,7 @@ import {
   Ghost,
   Moon,
   Users,
+  User,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import {
@@ -72,6 +73,11 @@ const getWhatsappMenuItems = (t: (key: string) => string) => [
 ];
 
 const getAdminMenuItems = (t: (key: string) => string) => [
+  {
+    title: t("sidebar.profile"),
+    url: "/profile",
+    icon: User,
+  },
   {
     title: t("sidebar.reports"),
     url: "/signalements",

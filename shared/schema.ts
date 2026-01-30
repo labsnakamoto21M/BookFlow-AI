@@ -24,6 +24,8 @@ export const providerProfiles = pgTable("provider_profiles", {
   subscriptionStatus: text("subscription_status").default("trial"),
   availabilityMode: text("availability_mode").default("active"), // active, away, ghost
   maxSlots: integer("max_slots").default(1), // Max slots based on subscription plan
+  customInstructions: text("custom_instructions"), // AI bot personality and behavior instructions
+  externalProfileUrl: text("external_profile_url"), // Link to external profile (photos, details)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -116,7 +118,7 @@ export const appointments = pgTable("appointments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
   slotId: varchar("slot_id"), // Optional: links to specific masseuse
-  serviceId: varchar("service_id").notNull(),
+  serviceId: varchar("service_id"), // NULLABLE: bot can book without explicit service ID
   clientPhone: text("client_phone").notNull(),
   clientName: text("client_name"),
   appointmentDate: timestamp("appointment_date").notNull(),

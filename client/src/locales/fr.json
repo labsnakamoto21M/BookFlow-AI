@@ -2,6 +2,7 @@
   "common": {
     "loading": "Chargement...",
     "save": "Enregistrer",
+    "saving": "Enregistrement...",
     "cancel": "Annuler",
     "delete": "Supprimer",
     "edit": "Modifier",
@@ -68,6 +69,7 @@
     "whatsapp": "WhatsApp",
     "whatsappConnection": "Connexion WhatsApp",
     "admin": "Admin",
+    "profile": "Profil",
     "reports": "Signalements",
     "blacklist": "Blacklist",
     "subscription": "Abonnement",
@@ -363,5 +365,27 @@
     "popular": "POPULAIRE",
     "crackTheCode": "Crack the code.",
     "footer": "Tous droits reserves."
+  },
+  "profile": {
+    "title": "Mon Profil",
+    "subtitle": "Configurez votre profil et les instructions du bot",
+    "saved": "Profil enregistre",
+    "basicInfo": "Informations de base",
+    "businessName": "Nom d'affichage",
+    "businessNamePlaceholder": "Ex: Sophie",
+    "address": "Adresse GPS (pour confirmation RDV)",
+    "addressPlaceholder": "Ex: Rue de la Loi 123, Bruxelles",
+    "addressDescription": "Cette adresse sera envoyee au client apres confirmation du RDV",
+    "city": "Ville",
+    "cityPlaceholder": "Ex: Bruxelles",
+    "phone": "Telephone",
+    "botInstructions": "Instructions pour le bot",
+    "botInstructionsDescription": "Personnalisez le caractere et les regles de votre bot IA",
+    "botInstructionsPlaceholder": "Ex: Je suis directe et seche. Je ne reponds pas aux curieux. Je travaille uniquement sur RDV...",
+    "botInstructionsHint": "Ces instructions definissent la personnalite du bot et ses regles de comportement",
+    "externalUrl": "Lien vers votre annonce",
+    "externalUrlDescription": "Si le client demande des photos ou des details, le bot le redirigera vers ce lien",
+    "externalUrlLabel": "URL de votre profil externe",
+    "externalUrlHint": "Ex: quartier-rouge.be, 6annonce.com, etc."
   }
 }

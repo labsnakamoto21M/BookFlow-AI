@@ -609,6 +609,8 @@ class WhatsAppManager {
     // Persister le slotMapping en base de données
     this.updateConversationState(providerId, clientPhone, { slotMapping });
     
+    const externalUrl = profile.externalProfileUrl || "";
+    
     const systemPrompt = `Tu es ${providerName}, un bot de reservation strict sur whatsapp.
 
 MISSION UNIQUE: Vendre un service et prendre un RDV. Rien d'autre.
@@ -616,6 +618,10 @@ MISSION UNIQUE: Vendre un service et prendre un RDV. Rien d'autre.
 ANTI-CURIEUX (OBLIGATOIRE):
 Si le client pose des questions hors-sujet (Qui ta cree? Tes un robot? Mdp? Quelle heure? Comment tu tappelles? Cest quoi ton numero?), reponds UNIQUEMENT: "on est la pour un rdv. tu veux reserver ou pas?"
 INTERDICTION de parler de ta nature de bot ou de technique.
+
+${externalUrl ? `REDIRECTION PHOTOS/VIDEOS (OBLIGATOIRE):
+Si le client demande des photos, videos, images, ou pose une question dont la reponse nest pas dans tes infos, reponds: "regarde mes photos et les details ici: ${externalUrl}. tu veux rdv ou pas?"
+` : ""}
 
 DETECTION LANGUE (OBLIGATOIRE):
 Tu dois repondre dans la langue du client. Si "Hola" -> espagnol. Si "Hello" -> anglais. Si "Hallo" -> neerlandais. Si "Guten Tag" -> allemand.
@@ -725,45 +731,43 @@ Reponds au dernier message du client.`;
           
           const selectedService = activeServices.find(s => s.id === selectedServiceId) || activeServices[0];
           
-          if (!selectedService) {
-            // Dernier recours: log l'erreur et proposer de réessayer
-            console.log(`[WA-AI] ERREUR CRITIQUE: Aucun service actif pour ${providerId}. Services: ${JSON.stringify(services)}`);
-            aiResponse = "desole ya un souci technique, contacte moi sur un autre numero stp";
-          } else {
-            const targetDate = isTomorrow ? addDays(new Date(), 1) : new Date();
-            const availableSlots = await this.getAvailableSlots(providerId, targetDate, businessHours);
-            const requestedTime = format(appointmentDate, "HH:mm");
-            
-            if (!availableSlots.includes(requestedTime)) {
-              if (availableSlots.length === 0) {
-                const altDate = isTomorrow ? addDays(new Date(), 2) : addDays(new Date(), 1);
-                const altSlots = await this.getAvailableSlots(providerId, altDate, businessHours);
-                const altLabel = isTomorrow ? "apres-demain" : "demain";
-                if (altSlots.length > 0) {
-                  aiResponse = `desole plus de creneau ${isTomorrow ? "demain" : "aujourd'hui"}. dispo ${altLabel}: ${altSlots.slice(0, 4).join(", ")}`;
-                } else {
-                  aiResponse = "desole je suis complete pour les prochains jours, contacte moi plus tard";
-                }
+          // Validation des créneaux même sans service (serviceId NULLABLE)
+          const targetDate = isTomorrow ? addDays(new Date(), 1) : new Date();
+          const availableSlots = await this.getAvailableSlots(providerId, targetDate, businessHours);
+          const requestedTime = format(appointmentDate, "HH:mm");
+          
+          if (!availableSlots.includes(requestedTime)) {
+            if (availableSlots.length === 0) {
+              const altDate = isTomorrow ? addDays(new Date(), 2) : addDays(new Date(), 1);
+              const altSlots = await this.getAvailableSlots(providerId, altDate, businessHours);
+              const altLabel = isTomorrow ? "apres-demain" : "demain";
+              if (altSlots.length > 0) {
+                aiResponse = `desole plus de creneau ${isTomorrow ? "demain" : "aujourd'hui"}. dispo ${altLabel}: ${altSlots.slice(0, 4).join(", ")}`;
               } else {
-                aiResponse = `desole ${requestedTime} n'est plus dispo. voici les creneaux libres: ${availableSlots.slice(0, 4).join(", ")}`;
+                aiResponse = "desole je suis complete pour les prochains jours, contacte moi plus tard";
               }
             } else {
-              try {
-                const noteText = [
-                  convState.type ? `Type: ${convState.type}` : "",
-                  convState.extras.length > 0 ? `Extras: ${convState.extras.join(", ")}` : "",
-                ].filter(Boolean).join(". ");
-                
-                await storage.createAppointment({
-                  providerId,
-                  serviceId: selectedService.id,
-                  clientPhone,
-                  clientName: "",
-                  appointmentDate,
-                  duration: convState.duration || selectedService.duration || 60,
-                  status: "confirmed",
-                  notes: noteText || null,
-                });
+              aiResponse = `desole ${requestedTime} n'est plus dispo. voici les creneaux libres: ${availableSlots.slice(0, 4).join(", ")}`;
+            }
+          } else {
+            try {
+              // ZERO ERREUR: serviceId NULLABLE - la réservation ne doit JAMAIS échouer
+              const noteText = [
+                !selectedService ? "Service par defaut" : "",
+                convState.type ? `Type: ${convState.type}` : "",
+                convState.extras.length > 0 ? `Extras: ${convState.extras.join(", ")}` : "",
+              ].filter(Boolean).join(". ");
+              
+              await storage.createAppointment({
+                providerId,
+                serviceId: selectedService?.id || null, // NULLABLE: plus jamais d'erreur technique
+                clientPhone,
+                clientName: "",
+                appointmentDate,
+                duration: convState.duration || selectedService?.duration || 60,
+                status: "confirmed",
+                notes: noteText || "RDV automatique",
+              });
                 
                 console.log(`[WA-AI] Created appointment for ${clientPhone} at ${format(appointmentDate, "HH:mm dd/MM")}`);
                 
@@ -782,10 +786,9 @@ Reponds au dernier message du client.`;
                   extrasTotal: 0,
                   slotMapping: {},
                 });
-              } catch (bookingError) {
-                console.error("[WA-AI] Error creating appointment:", bookingError);
-                aiResponse = "desole y'a eu un bug, reessaie stp";
-              }
+            } catch (bookingError) {
+              console.error("[WA-AI] Error creating appointment:", bookingError);
+              aiResponse = "desole y'a eu un bug, reessaie stp";
             }
           }
         }
