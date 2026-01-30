@@ -1,0 +1,32 @@
+"Refonte majeure de ChatSlot pour supporter le multi-comptes et une landing page narrative.
+1. NOUVELLE LANDING PAGE (Root '/') :
+Design ultra-simple, sombre, sans blabla commercial.
+Visual Mockup : Crée un composant simulant une conversation WhatsApp réelle :
+Client: 'Cc dispo 1h ?' -> Bot: 'cc! oui 100e. 20h ou 21h?' -> Client: '20h c bon' -> Bot: 'ok c noter. je suis rue [X]. je tenvoie le num 15min avant. a tte'.
+Onboarding en 2 étapes : Affiche clairement : '1. Payez votre accès' -> '2. Scannez le QR code' -> 'Le bot prend le relais'.
+Points de confiance : Badges discrets : [11 Langues] [Zéro Stockage] [Safety Blacklist] [Reprise de contrôle manuelle à tout moment].
+Prompt : CHATSLOT_5_TIERS_AGENCY_EDITION
+"Implémente la nouvelle structure tarifaire et l'interface multi-slots pour supporter jusqu'à 15 numéros.
+
+1. CONFIGURATION DES PLANS (Stripe & Backend) :
+Mets à jour les limites de slots par utilisateur selon ces 5 offres :
+SOLO : 49€ (1 Slot)
+DUO : 79€ (2 Slots)
+TRIO : 99€ (3 Slots)
+ELITE : 149€ (6 Slots)
+AGENCE : 229€ (15 Slots)
+Ajoute une colonne subscription_plan dans la table users et max_slots dans provider_profiles.
+2. INTERFACE MULTI-AGENTS (Dashboard) :
+Crée une vue 'Overview' qui affiche chaque masseuse (Slot) sous forme de carte compacte.
+Chaque carte doit montrer : Nom de la masseuse, Statut (⚡ ACTIVE, 🌙 AWAY, 👻 GHOST) et un indicateur de connexion WhatsApp.
+Au clic sur une carte, l'utilisateur accède à la configuration spécifique (Prix, Horaires, Adresse) de cette masseuse uniquement.
+3. AGENDA CENTRALISÉ :
+Dans l'onglet Agenda, ajoute un filtre (Dropdown) : 'Afficher tout' ou 'Filtrer par masseuse'.
+Les rendez-vous dans l'agenda global doivent afficher le nom de la masseuse concernée.
+4. LANDING PAGE NARRATIVE :
+Mets à jour le tableau des prix avec les 5 offres.
+Conserve le design minimaliste noir.
+Mockup WhatsApp : Garde la démonstration du bot furtif sans emojis avec ses fautes d'orthographe (ton sec et efficace).
+5. LOGIQUE TECHNIQUE :
+Assure-toi que chaque Slot a son propre dossier de session Baileys ./auth_info_baileys/{user_id}/{slot_id} pour éviter tout conflit.
+Le 'Manual Override' (pause de 24h) doit être indépendant par masseuse."
