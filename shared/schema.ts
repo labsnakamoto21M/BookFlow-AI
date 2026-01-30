@@ -6,6 +6,9 @@ import { z } from "zod";
 // Re-export auth models
 export * from "./models/auth";
 
+// Re-export chat models for AI integrations
+export * from "./models/chat";
+
 // Provider Profiles - Extended user info for service providers
 export const providerProfiles = pgTable("provider_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
