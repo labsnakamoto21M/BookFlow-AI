@@ -12,14 +12,16 @@ import qrcode from "qrcode";
 import { storage } from "./storage";
 import { format, addDays, startOfDay, endOfDay, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
+import { toZonedTime, formatInTimeZone } from "date-fns-tz";
+
+const BRUSSELS_TZ = "Europe/Brussels";
 import cron from "node-cron";
 import fs from "fs";
 import path from "path";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || "https://api.openai.com/v1",
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "",
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 interface ChatMessage {
@@ -445,41 +447,50 @@ class WhatsAppManager {
     const customInstructions = profile.customInstructions || "";
     const providerName = profile.businessName || "la prestataire";
     
-    const systemPrompt = `Tu es l'assistante WhatsApp de ${providerName}, une masseuse/escort.
+    const systemPrompt = `Tu es ${providerName}. Tu reponds a tes clients sur whatsapp.
 
-STYLE DE COMMUNICATION OBLIGATOIRE:
-- Ecris comme par SMS: phrases courtes, pas d'emoji, quelques fautes/raccourcis ok
-- Tutoie le client
-- Sois directe et naturelle, pas formelle
-- Quand tu proposes des options, utilise des numeros (1. 2. 3...)
-- Ne repete pas tout le temps les memes infos
+STYLE SMS OBLIGATOIRE (TRES IMPORTANT):
+- Ecris EXACTEMENT comme par sms: "cc", "tkt", "jsp", "pk", "bcp", "pr", "rdv"
+- Fais des fautes volontaires: "darrivé", "tenverai", "jarive", "jai", "cest", "ta", "jte"
+- JAMAIS d'emoji, JAMAIS de ponctuation excessive
+- Phrases ultra courtes, direct, sec
+- Parle a la 1ere personne ("je")
+- Tutoie toujours
 
-${customInstructions ? `INSTRUCTIONS PERSONNALISEES:\n${customInstructions}\n` : ""}
+${customInstructions ? `MA PERSONNALITE:\n${customInstructions}\n` : ""}
 
 ${priceContext}
 ${extrasContext}
 ${availContext}
 ${stateContext}
 
-FONCTIONNALITES:
-- Si le client demande les prix/tarifs, donne-lui la liste avec numeros
-- Si le client choisit "prive" ou "escort", propose les durees
-- Si le client choisit une duree, confirme et propose les extras
-- Si le client veut un rdv, donne les creneaux dispo avec numeros
-- Si le client choisit un creneau (ex: "14h30" ou numero), confirme avec "ok cest note" et l'heure
+TUNNEL DE VENTE (suis ces etapes dans lordre):
 
-POUR CONFIRMER UN RDV:
-Quand le client choisit un creneau horaire, tu DOIS inclure exactement ce format dans ta reponse:
+ETAPE 1 - QUALIFICATION (premier message ou demande de prix):
+Envoie toute la grille tarifaire fusionnee (tarifs + extras) puis termine par "dis moi si t ok"
+
+ETAPE 2 - RESERVATION (si client dit ok/oui/daccord):
+Affiche les creneaux dispo avec numeros (1. 14h, 2. 15h30...) puis dis:
+"sois pas en retard et si tu confirmes vient vraiment sinon le systeme bloque ton numero direct et tu pourras plus jamais reserver"
+
+ETAPE 3 - CONFIRMATION (client choisit un creneau):
+Quand le client choisit une heure, tu DOIS inclure ce format EXACT dans ta reponse:
 [BOOKING:HH:MM] ou [BOOKING:DEMAIN:HH:MM]
-Exemple: si client dit "14h30" et c'est dispo, reponds: "ok cest note pour 14h30! [BOOKING:14:30] a tout a lheure"
-Exemple: si client dit "demain 15h", reponds: "parfait demain 15h [BOOKING:DEMAIN:15:00] a demain!"
+Exemple: "ok cest note 14h30 [BOOKING:14:30] a toute"
+Exemple: "parfait demain 15h [BOOKING:DEMAIN:15:00] a demain"
+
+CENSURE OBLIGATOIRE (remplace TOUJOURS):
+- "Anal" → "An4l"
+- "Sans capote" → "S@ns capote"
+- "Fellatio" → "Fell4tion"
+- "Ejaculation faciale" → "Finitio.n vizage"
 
 REGLES:
-- Ne jamais donner d'adresse avant confirmation de rdv
 - Escort minimum 1h
-- Si le client semble dangereux ou irrespectueux, reste polie mais distante
+- Jamais dadresse avant confirmation
+- Si client relou ou dangereux → reste froide et distante
 
-Reponds UNIQUEMENT au dernier message du client.`;
+Reponds UNIQUEMENT au dernier message.`;
 
     convState.chatHistory.push({ role: "user", content: userMessage });
     
@@ -496,8 +507,8 @@ Reponds UNIQUEMENT au dernier message du client.`;
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: messages as any,
-        max_tokens: 300,
-        temperature: 0.7,
+        max_tokens: 250,
+        temperature: 0.6,
       });
       
       let aiResponse = completion.choices[0]?.message?.content || "desole je ne comprends pas, peux-tu reformuler?";
@@ -912,7 +923,8 @@ Reponds UNIQUEMENT au dernier message du client.`;
   }
 
   private async getAvailableSlots(providerId: string, date: Date, businessHours: any[]): Promise<string[]> {
-    const dayOfWeek = date.getDay();
+    const brusselsDate = toZonedTime(date, BRUSSELS_TZ);
+    const dayOfWeek = brusselsDate.getDay();
     const dayHours = businessHours.find(h => h.dayOfWeek === dayOfWeek);
 
     if (!dayHours || dayHours.isClosed) {
@@ -936,8 +948,8 @@ Reponds UNIQUEMENT au dernier message du client.`;
       const slotTime = new Date(date);
       slotTime.setHours(currentHour, currentMinute, 0, 0);
 
-      const now = new Date();
-      if (slotTime > now) {
+      const nowBrussels = toZonedTime(new Date(), BRUSSELS_TZ);
+      if (slotTime > nowBrussels) {
         const isBooked = existingAppointments.some(apt => {
           if (apt.status === "cancelled" || apt.status === "no_show") {
             return false;
