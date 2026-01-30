@@ -15,6 +15,17 @@ import { fr } from "date-fns/locale";
 import cron from "node-cron";
 import fs from "fs";
 import path from "path";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || "https://api.openai.com/v1",
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "",
+});
+
+interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
 
 interface WhatsAppSession {
   socket: WASocket | null;
@@ -33,6 +44,7 @@ interface ConversationState {
   extras: string[];
   extrasTotal: number;
   lastUpdate: number;
+  chatHistory: ChatMessage[];
 }
 
 const logger = pino({ level: "silent" });
@@ -58,6 +70,7 @@ class WhatsAppManager {
         extras: [],
         extrasTotal: 0,
         lastUpdate: Date.now(),
+        chatHistory: [],
       };
       this.conversationStates.set(key, newState);
       return newState;
@@ -269,9 +282,6 @@ class WhatsAppManager {
     // FILTER 4: Ignore empty messages
     if (!content) return;
 
-    const services = await storage.getServices(providerId);
-    const businessHours = await storage.getBusinessHours(providerId);
-
     const isBlocked = await storage.isBlockedByProvider(providerId, clientPhone);
     if (isBlocked) return;
 
@@ -283,37 +293,7 @@ class WhatsAppManager {
 
     await storage.isBlacklisted(clientPhone);
 
-    let response = "";
-    const convState = this.getConversationState(providerId, clientPhone);
-
-    if (this.isGreeting(content)) {
-      response = this.generateGreeting(profile.businessName);
-    } else if (this.isPriceQuery(content)) {
-      response = await this.generatePriceList(providerId);
-    } else if (this.isPrivateChoice(content)) {
-      this.updateConversationState(providerId, clientPhone, { type: "private", duration: null, basePrice: 0 });
-      response = await this.generateDurationOptions(providerId, clientPhone, "private");
-    } else if (this.isEscortChoice(content)) {
-      this.updateConversationState(providerId, clientPhone, { type: "escort", duration: null, basePrice: 0 });
-      response = await this.generateDurationOptions(providerId, clientPhone, "escort");
-    } else if (this.isDurationChoice(content) && convState.type) {
-      response = await this.handleDurationChoice(providerId, clientPhone, content, convState.type);
-    } else if (this.isExtrasQuery(content)) {
-      response = await this.generateExtrasList(providerId, clientPhone);
-    } else if (content.startsWith("+") && content.length > 1) {
-      response = await this.handleExtraSelection(providerId, clientPhone, content.slice(1).trim());
-    } else if (content === "total" || content === "recap") {
-      response = this.generateTotalRecap(providerId, clientPhone);
-    } else if (this.isServiceQuery(content)) {
-      response = this.generateServiceInfo(services);
-    } else if (this.isBookingRequest(content)) {
-      response = await this.generateAvailableSlots(providerId, clientPhone, services, businessHours);
-    } else if (this.isSlotSelection(content)) {
-      response = await this.handleSlotSelection(providerId, clientPhone, content, services);
-    } else {
-      response = this.generateDefaultResponse(profile.businessName);
-    }
-
+    const response = await this.generateAIResponse(providerId, clientPhone, content, profile);
     await this.sendMessage(providerId, clientPhone, response);
   }
 
@@ -382,6 +362,148 @@ class WhatsAppManager {
       result = result.replace(new RegExp(original, "g"), replacement);
     }
     return result;
+  }
+
+  private async generateAIResponse(
+    providerId: string,
+    clientPhone: string,
+    userMessage: string,
+    profile: any
+  ): Promise<string> {
+    const convState = this.getConversationState(providerId, clientPhone);
+    
+    const basePrices = await storage.getBasePrices(providerId);
+    const serviceExtras = await storage.getServiceExtras(providerId);
+    const customExtras = await storage.getCustomExtras(providerId);
+    const businessHours = await storage.getBusinessHours(providerId);
+    const services = await storage.getServices(providerId);
+    
+    const today = new Date();
+    const tomorrow = addDays(today, 1);
+    const todaySlots = await this.getAvailableSlots(providerId, today, businessHours);
+    const tomorrowSlots = await this.getAvailableSlots(providerId, tomorrow, businessHours);
+    
+    const activePrices = basePrices.filter(p => p.active);
+    const activeExtras = serviceExtras.filter(e => e.active);
+    const activeCustom = customExtras.filter(e => e.active);
+    
+    const durationLabels: Record<number, string> = {
+      15: "15min", 30: "30min", 45: "45min", 60: "1h", 90: "1h30", 120: "2h"
+    };
+    
+    let priceContext = "TARIFS:\n";
+    priceContext += "chez moi (prive):\n";
+    activePrices.forEach((p, i) => {
+      const label = durationLabels[p.duration] || `${p.duration}min`;
+      const price = p.pricePrivate ? p.pricePrivate / 100 : 0;
+      priceContext += `${i + 1}. ${label}: ${price}e\n`;
+    });
+    priceContext += "\ndeplacement (escort, min 1h):\n";
+    activePrices.filter(p => p.duration >= 60).forEach((p, i) => {
+      const label = durationLabels[p.duration] || `${p.duration}min`;
+      const price = p.priceEscort ? p.priceEscort / 100 : 0;
+      priceContext += `${i + 1}. ${label}: ${price}e\n`;
+    });
+    
+    let extrasContext = "\nEXTRAS DISPONIBLES:\n";
+    let extraIndex = 1;
+    activeExtras.forEach(e => {
+      const price = e.price ? e.price / 100 : 0;
+      extrasContext += `${extraIndex}. ${e.extraType}: +${price}e\n`;
+      extraIndex++;
+    });
+    activeCustom.forEach(e => {
+      const price = e.price ? e.price / 100 : 0;
+      extrasContext += `${extraIndex}. ${e.name}: +${price}e\n`;
+      extraIndex++;
+    });
+    
+    let availContext = "\nDISPONIBILITES:\n";
+    if (todaySlots.length > 0) {
+      availContext += `Aujourd'hui: ${todaySlots.join(", ")}\n`;
+    } else {
+      availContext += "Aujourd'hui: complet\n";
+    }
+    if (tomorrowSlots.length > 0) {
+      availContext += `Demain (${format(tomorrow, "EEEE d", { locale: fr })}): ${tomorrowSlots.join(", ")}\n`;
+    } else {
+      availContext += `Demain: complet\n`;
+    }
+    
+    let stateContext = "";
+    if (convState.type || convState.duration) {
+      stateContext = "\nSELECTION EN COURS:\n";
+      if (convState.type) stateContext += `Type: ${convState.type === "private" ? "chez moi" : "deplacement"}\n`;
+      if (convState.duration) stateContext += `Duree: ${durationLabels[convState.duration]}\n`;
+      if (convState.basePrice) stateContext += `Prix de base: ${convState.basePrice}e\n`;
+      if (convState.extras.length > 0) {
+        stateContext += `Extras choisis: ${convState.extras.join(", ")} (+${convState.extrasTotal}e)\n`;
+        stateContext += `Total: ${convState.basePrice + convState.extrasTotal}e\n`;
+      }
+    }
+    
+    const customInstructions = profile.customInstructions || "";
+    const providerName = profile.businessName || "la prestataire";
+    
+    const systemPrompt = `Tu es l'assistante WhatsApp de ${providerName}, une masseuse/escort.
+
+STYLE DE COMMUNICATION OBLIGATOIRE:
+- Ecris comme par SMS: phrases courtes, pas d'emoji, quelques fautes/raccourcis ok
+- Tutoie le client
+- Sois directe et naturelle, pas formelle
+- Quand tu proposes des options, utilise des numeros (1. 2. 3...)
+- Ne repete pas tout le temps les memes infos
+
+${customInstructions ? `INSTRUCTIONS PERSONNALISEES:\n${customInstructions}\n` : ""}
+
+${priceContext}
+${extrasContext}
+${availContext}
+${stateContext}
+
+FONCTIONNALITES:
+- Si le client demande les prix/tarifs, donne-lui la liste avec numeros
+- Si le client choisit "prive" ou "escort", propose les durees
+- Si le client choisit une duree, confirme et propose les extras
+- Si le client veut un rdv, donne les creneaux dispo avec numeros
+- Si le client choisit un creneau (ex: "14h" ou "3"), confirme le rdv
+
+REGLES:
+- Ne jamais donner d'adresse avant confirmation de rdv
+- Escort minimum 1h
+- Si le client semble dangereux ou irrespectueux, reste polie mais distante
+
+Reponds UNIQUEMENT au dernier message du client.`;
+
+    convState.chatHistory.push({ role: "user", content: userMessage });
+    
+    if (convState.chatHistory.length > 10) {
+      convState.chatHistory = convState.chatHistory.slice(-10);
+    }
+    
+    const messages: ChatMessage[] = [
+      { role: "system", content: systemPrompt },
+      ...convState.chatHistory,
+    ];
+    
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: messages as any,
+        max_tokens: 300,
+        temperature: 0.7,
+      });
+      
+      const aiResponse = completion.choices[0]?.message?.content || "desole je ne comprends pas, peux-tu reformuler?";
+      
+      convState.chatHistory.push({ role: "assistant", content: aiResponse });
+      this.updateConversationState(providerId, clientPhone, { chatHistory: convState.chatHistory });
+      
+      return aiResponse;
+    } catch (error) {
+      console.error("[WA-AI] Error generating AI response:", error);
+      return "desole y'a eu un souci, reessaie stp";
+    }
   }
 
   private generateGreeting(businessName: string): string {
