@@ -47,6 +47,7 @@ interface ConversationState {
   extrasTotal: number;
   lastUpdate: number;
   chatHistory: ChatMessage[];
+  serviceId: string | null;
 }
 
 const logger = pino({ level: "silent" });
@@ -73,6 +74,7 @@ class WhatsAppManager {
         extrasTotal: 0,
         lastUpdate: Date.now(),
         chatHistory: [],
+        serviceId: null,
       };
       this.conversationStates.set(key, newState);
       return newState;
@@ -366,6 +368,48 @@ class WhatsAppManager {
     return result;
   }
 
+  private getFormattedPriceList(basePrices: any[], serviceExtras: any[], customExtras: any[]): string {
+    const durationLabels: Record<number, string> = {
+      15: "15min", 30: "30min", 45: "45min", 60: "1h", 90: "1h30", 120: "2h"
+    };
+    
+    let result = "";
+    
+    // TARIFS DE BASE - Privé
+    result += "CHEZ MOI (prive):\n";
+    basePrices.forEach((p, i) => {
+      const label = durationLabels[p.duration] || `${p.duration}min`;
+      const price = p.pricePrivate ? p.pricePrivate / 100 : 0;
+      if (price > 0) {
+        result += `- ${label}: ${price}e\n`;
+      }
+    });
+    
+    // TARIFS DE BASE - Escort
+    const escortPrices = basePrices.filter(p => p.duration >= 60 && p.priceEscort && p.priceEscort > 0);
+    if (escortPrices.length > 0) {
+      result += "\nDEPLACEMENT (escort, min 1h):\n";
+      escortPrices.forEach((p) => {
+        const label = durationLabels[p.duration] || `${p.duration}min`;
+        const price = p.priceEscort / 100;
+        result += `- ${label}: ${price}e\n`;
+      });
+    }
+    
+    // EXTRAS (service_extras + custom_extras fusionnés)
+    const allExtras = [...serviceExtras, ...customExtras.map(e => ({ ...e, extraType: e.name }))];
+    if (allExtras.length > 0) {
+      result += "\nEXTRAS DISPONIBLES:\n";
+      allExtras.forEach((e) => {
+        const price = e.price ? e.price / 100 : 0;
+        const name = e.extraType || e.name;
+        result += `- ${name}: +${price}e\n`;
+      });
+    }
+    
+    return result || "Tarifs non configures";
+  }
+
   private async generateAIResponse(
     providerId: string,
     clientPhone: string,
@@ -452,40 +496,61 @@ class WhatsAppManager {
     const customInstructions = profile.customInstructions || "";
     const providerName = profile.businessName || "la prestataire";
     
-    const systemPrompt = `Tu es ${providerName}. Tu reponds a tes clients sur whatsapp.
+    // GRILLE TARIFAIRE UNIFIÉE (base + extras fusionnés)
+    const fullPriceList = this.getFormattedPriceList(activePrices, activeExtras, activeCustom);
+    
+    // Liste des créneaux numérotés
+    let numberedSlots = "";
+    if (todaySlots.length > 0) {
+      numberedSlots += "AUJOURD'HUI:\n";
+      todaySlots.forEach((slot, i) => {
+        numberedSlots += `${i + 1}. ${slot}\n`;
+      });
+    }
+    if (tomorrowSlots.length > 0) {
+      const offset = todaySlots.length;
+      numberedSlots += `\nDEMAIN (${format(tomorrow, "EEEE d", { locale: fr })}):\n`;
+      tomorrowSlots.forEach((slot, i) => {
+        numberedSlots += `${offset + i + 1}. ${slot}\n`;
+      });
+    }
+    
+    const systemPrompt = `Tu es ${providerName}, un bot de reservation strict sur whatsapp.
 
-STYLE SMS OBLIGATOIRE (TRES IMPORTANT):
-- Ecris EXACTEMENT comme par sms: "cc", "tkt", "jsp", "pk", "bcp", "pr", "rdv"
-- Fais des fautes volontaires: "darrivé", "tenverai", "jarive", "jai", "cest", "ta", "jte"
-- JAMAIS d'emoji, JAMAIS de ponctuation excessive
-- Phrases ultra courtes, direct, sec
-- Parle a la 1ere personne ("je")
+REGLE ABSOLUE: Tu ne dois JAMAIS inventer ou proposer un creneau qui n'est pas dans la liste ci-dessous. Si le client demande un horaire qui n'est pas liste, refuse poliment.
+
+STYLE SMS OBLIGATOIRE:
+- Ecris comme par sms: "cc", "tkt", "jsp", "pk", "bcp", "pr", "rdv"
+- Fautes volontaires: "darrivé", "tenverai", "jarive", "jai", "cest", "ta", "jte"
+- ZERO emoji, phrases ultra courtes, direct
 - Tutoie toujours
 
 ${customInstructions ? `MA PERSONNALITE:\n${customInstructions}\n` : ""}
 
-${priceContext}
-${extrasContext}
-${availContext}
+===== GRILLE TARIFAIRE COMPLETE =====
+${fullPriceList}
+
+===== CRENEAUX DISPONIBLES (SEULS CES HORAIRES SONT VALIDES) =====
+${numberedSlots || "Aucun creneau disponible"}
 ${stateContext}
 
-TUNNEL DE VENTE (suis ces etapes dans lordre):
+TUNNEL DE VENTE STRICT:
 
 ETAPE 1 - QUALIFICATION (premier message ou demande de prix):
-Envoie toute la grille tarifaire fusionnee (tarifs + extras) puis termine par "dis moi si t ok"
+Envoie la grille tarifaire complete (tarifs + extras) puis termine par "dis moi si t ok"
 
 ETAPE 2 - RESERVATION (si client dit ok/oui/daccord):
-Affiche les creneaux dispo avec numeros (1. 14h, 2. 15h30...) puis dis:
+Affiche TOUS les creneaux disponibles avec numeros puis dis:
 "sois pas en retard et si tu confirmes vient vraiment sinon le systeme bloque ton numero direct et tu pourras plus jamais reserver"
 
-ETAPE 3 - CONFIRMATION (client choisit un creneau):
-Quand le client choisit une heure, tu DOIS inclure ce format EXACT dans ta reponse:
-[BOOKING:HH:MM] ou [BOOKING:DEMAIN:HH:MM]
+ETAPE 3 - CONFIRMATION (client choisit un creneau par numero ou heure):
+Quand le client choisit, tu DOIS inclure ce format EXACT:
+[BOOKING:HH:MM] pour aujourd'hui ou [BOOKING:DEMAIN:HH:MM] pour demain
 Exemple: "ok cest note 14h30 [BOOKING:14:30] a toute"
 Exemple: "parfait demain 15h [BOOKING:DEMAIN:15:00] a demain"
 
-CENSURE OBLIGATOIRE (remplace TOUJOURS):
-- "Anal" → "An4l"
+CENSURE OBLIGATOIRE:
+- "Anal" → "An4l"  
 - "Sans capote" → "S@ns capote"
 - "Fellatio" → "Fell4tion"
 - "Ejaculation faciale" → "Finitio.n vizage"
@@ -493,9 +558,9 @@ CENSURE OBLIGATOIRE (remplace TOUJOURS):
 REGLES:
 - Escort minimum 1h
 - Jamais dadresse avant confirmation
-- Si client relou ou dangereux → reste froide et distante
+- REFUSE tout creneau non liste ci-dessus
 
-Reponds UNIQUEMENT au dernier message.`;
+Reponds au dernier message du client.`;
 
     convState.chatHistory.push({ role: "user", content: userMessage });
     
@@ -537,11 +602,23 @@ Reponds UNIQUEMENT au dernier message.`;
         if (appointmentDate <= nowBrusselsBooking) {
           aiResponse = "desole ce creneau est deja passe, choisis une autre heure stp";
         } else {
+          // FORCE: Récupération du service par défaut si aucun serviceId en session
           const activeServices = services.filter(s => s.active);
-          const defaultService = activeServices[0];
+          let selectedServiceId = convState.serviceId;
           
-          if (!defaultService) {
-            aiResponse = "desole pas de service dispo pour linstant";
+          // Si pas de serviceId en session, on force le premier service actif
+          if (!selectedServiceId && activeServices.length > 0) {
+            selectedServiceId = activeServices[0].id;
+            this.updateConversationState(providerId, clientPhone, { serviceId: selectedServiceId });
+            console.log(`[WA-AI] Service forcé: ${selectedServiceId}`);
+          }
+          
+          const selectedService = activeServices.find(s => s.id === selectedServiceId) || activeServices[0];
+          
+          if (!selectedService) {
+            // Dernier recours: créer un service par défaut virtuel
+            console.log(`[WA-AI] ERREUR: Aucun service trouvé pour ${providerId}`);
+            aiResponse = "desole ya un souci technique, reessaie stp";
           } else {
             const targetDate = isTomorrow ? addDays(new Date(), 1) : new Date();
             const availableSlots = await this.getAvailableSlots(providerId, targetDate, businessHours);
@@ -569,11 +646,11 @@ Reponds UNIQUEMENT au dernier message.`;
                 
                 await storage.createAppointment({
                   providerId,
-                  serviceId: defaultService.id,
+                  serviceId: selectedService.id,
                   clientPhone,
                   clientName: "",
                   appointmentDate,
-                  duration: convState.duration || 60,
+                  duration: convState.duration || selectedService.duration || 60,
                   status: "confirmed",
                   notes: noteText || null,
                 });
@@ -987,7 +1064,8 @@ Reponds UNIQUEMENT au dernier message.`;
       }
     }
 
-    return slots.slice(0, 6);
+    // Retourne TOUS les créneaux disponibles sans limite
+    return slots;
   }
 
   private async handleSlotSelection(providerId: string, clientPhone: string, content: string, services: any[]): Promise<string> {
