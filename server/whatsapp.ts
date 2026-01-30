@@ -374,13 +374,18 @@ class WhatsAppManager {
   ): Promise<string> {
     const convState = this.getConversationState(providerId, clientPhone);
     
+    // SYNCHRONISATION TEMPS RÉEL: Récupération FRAÎCHE des données à chaque message
     const basePrices = await storage.getBasePrices(providerId);
     const serviceExtras = await storage.getServiceExtras(providerId);
     const customExtras = await storage.getCustomExtras(providerId);
     const businessHours = await storage.getBusinessHours(providerId);
     const services = await storage.getServices(providerId);
     
-    const today = new Date();
+    console.log(`[DYNAMIQUE] Données fraîches récupérées pour le prestataire ${providerId}. Envoi de la réponse...`);
+    
+    // Utilisation du timezone Bruxelles pour les créneaux
+    const nowBrussels = toZonedTime(new Date(), BRUSSELS_TZ);
+    const today = nowBrussels;
     const tomorrow = addDays(today, 1);
     const todaySlots = await this.getAvailableSlots(providerId, today, businessHours);
     const tomorrowSlots = await this.getAvailableSlots(providerId, tomorrow, businessHours);
@@ -519,7 +524,9 @@ Reponds UNIQUEMENT au dernier message.`;
         const hour = parseInt(bookingMatch[2]);
         const minute = parseInt(bookingMatch[3]);
         
-        const appointmentDate = new Date();
+        // Utilisation du timezone Bruxelles pour la création de RDV
+        const nowBrusselsBooking = toZonedTime(new Date(), BRUSSELS_TZ);
+        const appointmentDate = new Date(nowBrusselsBooking);
         if (isTomorrow) {
           appointmentDate.setDate(appointmentDate.getDate() + 1);
         }
@@ -527,8 +534,7 @@ Reponds UNIQUEMENT au dernier message.`;
         
         aiResponse = aiResponse.replace(/\[BOOKING:(DEMAIN:)?(\d{1,2}):(\d{2})\]/, "").trim();
         
-        const now = new Date();
-        if (appointmentDate <= now) {
+        if (appointmentDate <= nowBrusselsBooking) {
           aiResponse = "desole ce creneau est deja passe, choisis une autre heure stp";
         } else {
           const activeServices = services.filter(s => s.active);
