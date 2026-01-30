@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Save, Trash2, Zap, Moon, Ghost } from "lucide-react";
@@ -22,6 +23,7 @@ const createSlotFormSchema = (t: (key: string) => string) => z.object({
   address: z.string().optional(),
   city: z.string().optional(),
   availabilityMode: z.enum(["active", "away", "ghost"]),
+  customInstructions: z.string().optional(),
 });
 
 type SlotFormData = z.infer<ReturnType<typeof createSlotFormSchema>>;
@@ -49,6 +51,7 @@ export default function SlotConfigPage() {
       address: "",
       city: "",
       availabilityMode: "active",
+      customInstructions: "",
     },
   });
   
@@ -60,6 +63,7 @@ export default function SlotConfigPage() {
         address: slot.address || "",
         city: slot.city || "",
         availabilityMode: (slot.availabilityMode as "active" | "away" | "ghost") || "active",
+        customInstructions: slot.customInstructions || "",
       });
     }
   }, [slot, form]);
@@ -227,7 +231,7 @@ export default function SlotConfigPage() {
                 {t("slotConfig.botSettings")}
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <FormField
                 control={form.control}
                 name="availabilityMode"
@@ -262,6 +266,28 @@ export default function SlotConfigPage() {
                       </SelectContent>
                     </Select>
                     <FormMessage data-testid="error-slot-mode" />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="customInstructions"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-mono">{t("slotConfig.customInstructions")}</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        {...field} 
+                        placeholder={t("slotConfig.customInstructionsPlaceholder")}
+                        className="font-mono min-h-[100px] resize-y"
+                        data-testid="textarea-custom-instructions"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      {t("slotConfig.customInstructionsHint")}
+                    </p>
+                    <FormMessage data-testid="error-custom-instructions" />
                   </FormItem>
                 )}
               />
