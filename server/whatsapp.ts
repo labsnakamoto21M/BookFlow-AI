@@ -514,42 +514,69 @@ Reponds UNIQUEMENT au dernier message du client.`;
         }
         appointmentDate.setHours(hour, minute, 0, 0);
         
-        try {
+        aiResponse = aiResponse.replace(/\[BOOKING:(DEMAIN:)?(\d{1,2}):(\d{2})\]/, "").trim();
+        
+        const now = new Date();
+        if (appointmentDate <= now) {
+          aiResponse = "desole ce creneau est deja passe, choisis une autre heure stp";
+        } else {
           const activeServices = services.filter(s => s.active);
           const defaultService = activeServices[0];
           
-          if (defaultService) {
-            const noteText = [
-              convState.type ? `Type: ${convState.type}` : "",
-              convState.extras.length > 0 ? `Extras: ${convState.extras.join(", ")}` : "",
-            ].filter(Boolean).join(". ");
+          if (!defaultService) {
+            aiResponse = "desole pas de service dispo pour linstant";
+          } else {
+            const targetDate = isTomorrow ? addDays(new Date(), 1) : new Date();
+            const availableSlots = await this.getAvailableSlots(providerId, targetDate, businessHours);
+            const requestedTime = format(appointmentDate, "HH:mm");
             
-            await storage.createAppointment({
-              providerId,
-              serviceId: defaultService.id,
-              clientPhone,
-              clientName: "",
-              appointmentDate,
-              duration: convState.duration || 60,
-              status: "confirmed",
-              notes: noteText || null,
-            });
-            
-            console.log(`[WA-AI] Created appointment for ${clientPhone} at ${format(appointmentDate, "HH:mm dd/MM")}`);
+            if (!availableSlots.includes(requestedTime)) {
+              if (availableSlots.length === 0) {
+                const altDate = isTomorrow ? addDays(new Date(), 2) : addDays(new Date(), 1);
+                const altSlots = await this.getAvailableSlots(providerId, altDate, businessHours);
+                const altLabel = isTomorrow ? "apres-demain" : "demain";
+                if (altSlots.length > 0) {
+                  aiResponse = `desole plus de creneau ${isTomorrow ? "demain" : "aujourd'hui"}. dispo ${altLabel}: ${altSlots.slice(0, 4).join(", ")}`;
+                } else {
+                  aiResponse = "desole je suis complete pour les prochains jours, contacte moi plus tard";
+                }
+              } else {
+                aiResponse = `desole ${requestedTime} n'est plus dispo. voici les creneaux libres: ${availableSlots.slice(0, 4).join(", ")}`;
+              }
+            } else {
+              try {
+                const noteText = [
+                  convState.type ? `Type: ${convState.type}` : "",
+                  convState.extras.length > 0 ? `Extras: ${convState.extras.join(", ")}` : "",
+                ].filter(Boolean).join(". ");
+                
+                await storage.createAppointment({
+                  providerId,
+                  serviceId: defaultService.id,
+                  clientPhone,
+                  clientName: "",
+                  appointmentDate,
+                  duration: convState.duration || 60,
+                  status: "confirmed",
+                  notes: noteText || null,
+                });
+                
+                console.log(`[WA-AI] Created appointment for ${clientPhone} at ${format(appointmentDate, "HH:mm dd/MM")}`);
+                
+                this.updateConversationState(providerId, clientPhone, {
+                  type: null,
+                  duration: null,
+                  basePrice: 0,
+                  extras: [],
+                  extrasTotal: 0,
+                });
+              } catch (bookingError) {
+                console.error("[WA-AI] Error creating appointment:", bookingError);
+                aiResponse = "desole y'a eu un bug, reessaie stp";
+              }
+            }
           }
-          
-          this.updateConversationState(providerId, clientPhone, {
-            type: null,
-            duration: null,
-            basePrice: 0,
-            extras: [],
-            extrasTotal: 0,
-          });
-        } catch (bookingError) {
-          console.error("[WA-AI] Error creating appointment:", bookingError);
         }
-        
-        aiResponse = aiResponse.replace(/\[BOOKING:(DEMAIN:)?(\d{1,2}):(\d{2})\]/, "").trim();
       }
       
       convState.chatHistory.push({ role: "assistant", content: aiResponse });
@@ -918,7 +945,10 @@ Reponds UNIQUEMENT au dernier message du client.`;
           const aptTime = typeof apt.appointmentDate === "string" 
             ? parseISO(apt.appointmentDate) 
             : apt.appointmentDate;
-          return Math.abs(aptTime.getTime() - slotTime.getTime()) < 30 * 60 * 1000;
+          const aptDuration = apt.duration || 60;
+          const aptEndTime = new Date(aptTime.getTime() + aptDuration * 60 * 1000);
+          
+          return slotTime >= aptTime && slotTime < aptEndTime;
         });
 
         const isBlocked = blockedSlots.some(slot => {
