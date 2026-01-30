@@ -592,6 +592,9 @@ class WhatsAppManager {
     
     const systemPrompt = `Tu es ${providerName}, un bot de reservation strict sur whatsapp.
 
+DETECTION LANGUE OBLIGATOIRE:
+Tu dois repondre dans la langue du client. Si le client dit "Hola", tu reponds en espagnol style SMS brut. Si le client dit "Hello", tu reponds en anglais style SMS brut. Adapte-toi automatiquement a la langue detectee.
+
 REGLE ABSOLUE: Tu ne dois JAMAIS inventer ou proposer un creneau qui n'est pas dans la liste ci-dessous. Si le client demande un horaire qui n'est pas liste, refuse poliment.
 
 STYLE SMS OBLIGATOIRE:
@@ -681,19 +684,23 @@ Reponds au dernier message du client.`;
           const activeServices = services.filter(s => s.active);
           let selectedServiceId = convState.serviceId;
           
-          // Si pas de serviceId en session, on force le premier service actif
+          // Si pas de serviceId en session, chercher le service 1h (60 min) en priorité
           if (!selectedServiceId && activeServices.length > 0) {
-            selectedServiceId = activeServices[0].id;
+            // Priorité 1: Service avec duration 60 (1h)
+            const service1h = activeServices.find(s => s.duration === 60);
+            // Priorité 2: Premier service actif
+            const fallbackService = service1h || activeServices[0];
+            selectedServiceId = fallbackService.id;
             this.updateConversationState(providerId, clientPhone, { serviceId: selectedServiceId });
-            console.log(`[WA-AI] Service forcé: ${selectedServiceId}`);
+            console.log(`[WA-AI] Service forcé (${service1h ? '1h trouvé' : 'fallback'}): ${selectedServiceId}`);
           }
           
           const selectedService = activeServices.find(s => s.id === selectedServiceId) || activeServices[0];
           
           if (!selectedService) {
-            // Dernier recours: créer un service par défaut virtuel
-            console.log(`[WA-AI] ERREUR: Aucun service trouvé pour ${providerId}`);
-            aiResponse = "desole ya un souci technique, reessaie stp";
+            // Dernier recours: log l'erreur et proposer de réessayer
+            console.log(`[WA-AI] ERREUR CRITIQUE: Aucun service actif pour ${providerId}. Services: ${JSON.stringify(services)}`);
+            aiResponse = "desole ya un souci technique, contacte moi sur un autre numero stp";
           } else {
             const targetDate = isTomorrow ? addDays(new Date(), 1) : new Date();
             const availableSlots = await this.getAvailableSlots(providerId, targetDate, businessHours);
