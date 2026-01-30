@@ -214,6 +214,8 @@ export const conversationSessions = pgTable("conversation_sessions", {
   extras: text("extras").array(), // array of extra names
   extrasTotal: integer("extras_total").default(0), // in cents
   chatHistory: jsonb("chat_history").default([]), // array of {role, content}
+  slotMapping: jsonb("slot_mapping").default({}), // {1: "09:00", 2: "09:30", ...} for numbered slot selection
+  detectedLanguage: text("detected_language").default("fr"), // detected client language
   lastUpdate: timestamp("last_update").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [

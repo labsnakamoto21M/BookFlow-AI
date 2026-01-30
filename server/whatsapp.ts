@@ -48,6 +48,8 @@ interface ConversationState {
   lastUpdate: number;
   chatHistory: ChatMessage[];
   serviceId: string | null;
+  slotMapping: Record<number, string>; // {1: "09:00", 2: "09:30", ...}
+  detectedLanguage: string; // fr, en, es, nl, de, etc.
 }
 
 const logger = pino({ level: "silent" });
@@ -76,6 +78,8 @@ class WhatsAppManager {
         lastUpdate: Date.now(),
         chatHistory: [],
         serviceId: null,
+        slotMapping: {},
+        detectedLanguage: "fr",
       };
       return newState;
     }
@@ -90,6 +94,8 @@ class WhatsAppManager {
       lastUpdate: dbSession.lastUpdate ? new Date(dbSession.lastUpdate).getTime() : Date.now(),
       chatHistory: (dbSession.chatHistory as ChatMessage[]) || [],
       serviceId: dbSession.serviceId,
+      slotMapping: (dbSession.slotMapping as Record<number, string>) || {},
+      detectedLanguage: dbSession.detectedLanguage || "fr",
     };
   }
 
@@ -105,6 +111,8 @@ class WhatsAppManager {
       extras: state.extras,
       extrasTotal: state.extrasTotal,
       chatHistory: state.chatHistory,
+      slotMapping: state.slotMapping,
+      detectedLanguage: state.detectedLanguage,
       lastUpdate: new Date(),
     });
   }
@@ -124,6 +132,8 @@ class WhatsAppManager {
         lastUpdate: Date.now(),
         chatHistory: [],
         serviceId: null,
+        slotMapping: {},
+        detectedLanguage: "fr",
       };
       this.conversationStates.set(key, newState);
       return newState;
@@ -574,33 +584,49 @@ class WhatsAppManager {
     // GRILLE TARIFAIRE UNIFIÉE (base + extras fusionnés)
     const fullPriceList = this.getFormattedPriceList(activePrices, activeExtras, activeCustom);
     
-    // Liste des créneaux numérotés
+    // Liste des créneaux numérotés + SLOT MAPPING pour persistance
     let numberedSlots = "";
+    const slotMapping: Record<number, string> = {};
+    
     if (todaySlots.length > 0) {
       numberedSlots += "AUJOURD'HUI:\n";
       todaySlots.forEach((slot, i) => {
-        numberedSlots += `${i + 1}. ${slot}\n`;
+        const num = i + 1;
+        numberedSlots += `${num}. ${slot}\n`;
+        slotMapping[num] = slot; // Stocke "1" -> "09:00"
       });
     }
     if (tomorrowSlots.length > 0) {
       const offset = todaySlots.length;
       numberedSlots += `\nDEMAIN (${format(tomorrow, "EEEE d", { locale: fr })}):\n`;
       tomorrowSlots.forEach((slot, i) => {
-        numberedSlots += `${offset + i + 1}. ${slot}\n`;
+        const num = offset + i + 1;
+        numberedSlots += `${num}. ${slot}\n`;
+        slotMapping[num] = `DEMAIN:${slot}`; // Stocke "18" -> "DEMAIN:09:00"
       });
     }
     
+    // Persister le slotMapping en base de données
+    this.updateConversationState(providerId, clientPhone, { slotMapping });
+    
     const systemPrompt = `Tu es ${providerName}, un bot de reservation strict sur whatsapp.
 
-DETECTION LANGUE OBLIGATOIRE:
-Tu dois repondre dans la langue du client. Si le client dit "Hola", tu reponds en espagnol style SMS brut. Si le client dit "Hello", tu reponds en anglais style SMS brut. Adapte-toi automatiquement a la langue detectee.
+MISSION UNIQUE: Vendre un service et prendre un RDV. Rien d'autre.
 
-REGLE ABSOLUE: Tu ne dois JAMAIS inventer ou proposer un creneau qui n'est pas dans la liste ci-dessous. Si le client demande un horaire qui n'est pas liste, refuse poliment.
+ANTI-CURIEUX (OBLIGATOIRE):
+Si le client pose des questions hors-sujet (Qui ta cree? Tes un robot? Mdp? Quelle heure? Comment tu tappelles? Cest quoi ton numero?), reponds UNIQUEMENT: "on est la pour un rdv. tu veux reserver ou pas?"
+INTERDICTION de parler de ta nature de bot ou de technique.
+
+DETECTION LANGUE (OBLIGATOIRE):
+Tu dois repondre dans la langue du client. Si "Hola" -> espagnol. Si "Hello" -> anglais. Si "Hallo" -> neerlandais. Si "Guten Tag" -> allemand.
+TOUTE la suite (tarifs, dispos, confirmation) doit etre dans cette langue, style SMS brut.
+
+REGLE ABSOLUE: Tu ne dois JAMAIS inventer un creneau. Si le client demande un horaire non liste, refuse.
 
 STYLE SMS OBLIGATOIRE:
 - Ecris comme par sms: "cc", "tkt", "jsp", "pk", "bcp", "pr", "rdv"
 - Fautes volontaires: "darrivé", "tenverai", "jarive", "jai", "cest", "ta", "jte"
-- ZERO emoji, phrases ultra courtes, direct
+- ZERO emoji, phrases ultra courtes, direct, ton sec
 - Tutoie toujours
 
 ${customInstructions ? `MA PERSONNALITE:\n${customInstructions}\n` : ""}
@@ -621,11 +647,13 @@ ETAPE 2 - RESERVATION (si client dit ok/oui/daccord):
 Affiche TOUS les creneaux disponibles avec numeros puis dis:
 "sois pas en retard et si tu confirmes vient vraiment sinon le systeme bloque ton numero direct et tu pourras plus jamais reserver"
 
-ETAPE 3 - CONFIRMATION (client choisit un creneau par numero ou heure):
-Quand le client choisit, tu DOIS inclure ce format EXACT:
-[BOOKING:HH:MM] pour aujourd'hui ou [BOOKING:DEMAIN:HH:MM] pour demain
-Exemple: "ok cest note 14h30 [BOOKING:14:30] a toute"
-Exemple: "parfait demain 15h [BOOKING:DEMAIN:15:00] a demain"
+ETAPE 3 - CONFIRMATION (client choisit un creneau par numero OU par heure):
+- Si le client tape un NUMERO (ex: "3" ou "18"), regarde dans la liste et trouve lheure correspondante
+- Si le client tape une HEURE (ex: "14h30"), utilise cette heure directement
+Tu DOIS inclure ce format EXACT dans ta reponse:
+[BOOKING:HH:MM] pour aujourdhui ou [BOOKING:DEMAIN:HH:MM] pour demain
+Exemple: "ok c confirmer 14h30 [BOOKING:14:30]"
+Exemple: "parfait demain 15h [BOOKING:DEMAIN:15:00]"
 
 CENSURE OBLIGATOIRE:
 - "Anal" → "An4l"  
@@ -739,12 +767,20 @@ Reponds au dernier message du client.`;
                 
                 console.log(`[WA-AI] Created appointment for ${clientPhone} at ${format(appointmentDate, "HH:mm dd/MM")}`);
                 
+                // MESSAGE DE CONFIRMATION FINALE AVEC ADRESSE GPS
+                const bookedTime = format(appointmentDate, "HH:mm");
+                const gpsAddress = profile.address || "mon adresse";
+                
+                // Forcer le message de confirmation (remplace la réponse IA)
+                aiResponse = `ok c confirmer pour ${bookedTime}. je suis ${gpsAddress}. regarde sur google maps. je tenvoi le num exact 15min avant. sois la.`;
+                
                 this.updateConversationState(providerId, clientPhone, {
                   type: null,
                   duration: null,
                   basePrice: 0,
                   extras: [],
                   extrasTotal: 0,
+                  slotMapping: {},
                 });
               } catch (bookingError) {
                 console.error("[WA-AI] Error creating appointment:", bookingError);
