@@ -202,6 +202,25 @@ export const safetyBlacklist = pgTable("safety_blacklist", {
   index("idx_safety_blacklist_phone").on(table.phone),
 ]);
 
+// Conversation sessions - Persistent state for WhatsApp bot conversations
+export const conversationSessions = pgTable("conversation_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").notNull(),
+  clientPhone: text("client_phone").notNull(),
+  serviceId: varchar("service_id"),
+  sessionType: text("session_type"), // private, escort
+  duration: integer("duration"), // in minutes
+  basePrice: integer("base_price").default(0), // in cents
+  extras: text("extras").array(), // array of extra names
+  extrasTotal: integer("extras_total").default(0), // in cents
+  chatHistory: jsonb("chat_history").default([]), // array of {role, content}
+  lastUpdate: timestamp("last_update").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_conv_sessions_provider").on(table.providerId),
+  index("idx_conv_sessions_phone").on(table.clientPhone),
+]);
+
 // Relations
 export const providerProfilesRelations = relations(providerProfiles, ({ many }) => ({
   services: many(services),
@@ -325,6 +344,11 @@ export const insertSlotSchema = createInsertSchema(slots).omit({
   updatedAt: true,
 });
 
+export const insertConversationSessionSchema = createInsertSchema(conversationSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type ProviderProfile = typeof providerProfiles.$inferSelect;
 export type InsertProviderProfile = z.infer<typeof insertProviderProfileSchema>;
@@ -369,3 +393,6 @@ export type InsertNoShowReport = z.infer<typeof insertNoShowReportSchema>;
 
 export type SafetyBlacklistEntry = typeof safetyBlacklist.$inferSelect;
 export type InsertSafetyBlacklist = z.infer<typeof insertSafetyBlacklistSchema>;
+
+export type ConversationSession = typeof conversationSessions.$inferSelect;
+export type InsertConversationSession = z.infer<typeof insertConversationSessionSchema>;

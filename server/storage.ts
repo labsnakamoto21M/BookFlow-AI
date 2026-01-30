@@ -15,6 +15,7 @@ import {
   users,
   activityLogs,
   slots,
+  conversationSessions,
   type Service, 
   type InsertService,
   type BusinessHours,
@@ -43,6 +44,8 @@ import {
   type InsertActivityLog,
   type Slot,
   type InsertSlot,
+  type ConversationSession,
+  type InsertConversationSession,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql, desc, count, sum } from "drizzle-orm";
@@ -144,6 +147,11 @@ export interface IStorage {
   createSlot(slot: InsertSlot): Promise<Slot>;
   updateSlot(id: string, updates: Partial<InsertSlot>): Promise<Slot | undefined>;
   deleteSlot(id: string): Promise<void>;
+  
+  // Conversation Sessions (persistent WhatsApp bot state)
+  getConversationSession(providerId: string, clientPhone: string): Promise<ConversationSession | undefined>;
+  upsertConversationSession(session: InsertConversationSession): Promise<ConversationSession>;
+  deleteConversationSession(providerId: string, clientPhone: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -888,6 +896,39 @@ export class DatabaseStorage implements IStorage {
   
   async deleteSlot(id: string): Promise<void> {
     await db.delete(slots).where(eq(slots.id, id));
+  }
+  
+  // Conversation Sessions (persistent WhatsApp bot state)
+  async getConversationSession(providerId: string, clientPhone: string): Promise<ConversationSession | undefined> {
+    const [session] = await db.select().from(conversationSessions)
+      .where(and(
+        eq(conversationSessions.providerId, providerId),
+        eq(conversationSessions.clientPhone, clientPhone)
+      ));
+    return session;
+  }
+  
+  async upsertConversationSession(session: InsertConversationSession): Promise<ConversationSession> {
+    const existing = await this.getConversationSession(session.providerId, session.clientPhone);
+    
+    if (existing) {
+      const [result] = await db.update(conversationSessions)
+        .set({ ...session, lastUpdate: new Date() })
+        .where(eq(conversationSessions.id, existing.id))
+        .returning();
+      return result;
+    } else {
+      const [result] = await db.insert(conversationSessions).values(session).returning();
+      return result;
+    }
+  }
+  
+  async deleteConversationSession(providerId: string, clientPhone: string): Promise<void> {
+    await db.delete(conversationSessions)
+      .where(and(
+        eq(conversationSessions.providerId, providerId),
+        eq(conversationSessions.clientPhone, clientPhone)
+      ));
   }
 }
 
