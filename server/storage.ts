@@ -14,6 +14,7 @@ import {
   safetyBlacklist,
   users,
   activityLogs,
+  slots,
   type Service, 
   type InsertService,
   type BusinessHours,
@@ -40,6 +41,8 @@ import {
   type User,
   type ActivityLog,
   type InsertActivityLog,
+  type Slot,
+  type InsertSlot,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql, desc, count, sum } from "drizzle-orm";
@@ -131,6 +134,16 @@ export interface IStorage {
   
   // Stripe Integration
   getProviderProfileByStripeCustomerId(customerId: string): Promise<ProviderProfile | undefined>;
+  
+  // User subscription plan
+  updateUserSubscriptionPlan(userId: string, plan: string): Promise<User | undefined>;
+  
+  // Slots (Multi-agent support)
+  getSlots(providerId: string): Promise<Slot[]>;
+  getSlot(id: string): Promise<Slot | undefined>;
+  createSlot(slot: InsertSlot): Promise<Slot>;
+  updateSlot(id: string, updates: Partial<InsertSlot>): Promise<Slot | undefined>;
+  deleteSlot(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -837,6 +850,44 @@ export class DatabaseStorage implements IStorage {
     await db.update(users)
       .set({ passwordHash, updatedAt: new Date() })
       .where(eq(users.email, email));
+  }
+  
+  // User subscription plan
+  async updateUserSubscriptionPlan(userId: string, plan: string): Promise<User | undefined> {
+    const [result] = await db.update(users)
+      .set({ subscriptionPlan: plan, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return result;
+  }
+  
+  // Slots (Multi-agent support)
+  async getSlots(providerId: string): Promise<Slot[]> {
+    return db.select().from(slots)
+      .where(eq(slots.providerId, providerId))
+      .orderBy(slots.sortOrder);
+  }
+  
+  async getSlot(id: string): Promise<Slot | undefined> {
+    const [slot] = await db.select().from(slots).where(eq(slots.id, id));
+    return slot;
+  }
+  
+  async createSlot(slot: InsertSlot): Promise<Slot> {
+    const [result] = await db.insert(slots).values(slot).returning();
+    return result;
+  }
+  
+  async updateSlot(id: string, updates: Partial<InsertSlot>): Promise<Slot | undefined> {
+    const [result] = await db.update(slots)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(slots.id, id))
+      .returning();
+    return result;
+  }
+  
+  async deleteSlot(id: string): Promise<void> {
+    await db.delete(slots).where(eq(slots.id, id));
   }
 }
 

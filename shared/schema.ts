@@ -20,9 +20,30 @@ export const providerProfiles = pgTable("provider_profiles", {
   stripeCustomerId: text("stripe_customer_id"),
   subscriptionStatus: text("subscription_status").default("trial"),
   availabilityMode: text("availability_mode").default("active"), // active, away, ghost
+  maxSlots: integer("max_slots").default(1), // Max slots based on subscription plan
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Slots - Individual masseuses/agents for multi-account support
+export const slots = pgTable("slots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").notNull(),
+  name: text("name").notNull(), // Masseuse name
+  phone: text("phone"), // WhatsApp phone number for this slot
+  address: text("address"), // Address for this slot
+  city: text("city"),
+  availabilityMode: text("availability_mode").default("active"), // active, away, ghost
+  whatsappConnected: boolean("whatsapp_connected").default(false),
+  whatsappSessionData: text("whatsapp_session_data"),
+  manualOverrideUntil: timestamp("manual_override_until"), // Pause bot until this time (24h manual control)
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_slots_provider").on(table.providerId),
+]);
 
 // Legacy services table (kept for compatibility)
 export const services = pgTable("services", {
@@ -36,16 +57,18 @@ export const services = pgTable("services", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Base prices by duration (Prive vs Escort)
+// Base prices by duration (Prive vs Escort) - now per slot
 export const basePrices = pgTable("base_prices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
+  slotId: varchar("slot_id"), // Optional: if null, applies to provider default
   duration: integer("duration").notNull(), // in minutes: 15, 30, 45, 60, 90, 120
   pricePrivate: integer("price_private").default(0), // in cents
   priceEscort: integer("price_escort").default(0), // in cents
   active: boolean("active").default(true),
 }, (table) => [
   index("idx_base_prices_provider").on(table.providerId),
+  index("idx_base_prices_slot").on(table.slotId),
 ]);
 
 // Predefined extras (fixed list)
@@ -71,20 +94,24 @@ export const customExtras = pgTable("custom_extras", {
   index("idx_custom_extras_provider").on(table.providerId),
 ]);
 
-// Business hours for providers
+// Business hours for providers - now per slot
 export const businessHours = pgTable("business_hours", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
+  slotId: varchar("slot_id"), // Optional: if null, applies to provider default
   dayOfWeek: integer("day_of_week").notNull(), // 0 = Sunday, 6 = Saturday
   openTime: time("open_time").notNull(),
   closeTime: time("close_time").notNull(),
   isClosed: boolean("is_closed").default(false),
-});
+}, (table) => [
+  index("idx_business_hours_slot").on(table.slotId),
+]);
 
-// Appointments
+// Appointments - now per slot
 export const appointments = pgTable("appointments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
+  slotId: varchar("slot_id"), // Optional: links to specific masseuse
   serviceId: varchar("service_id").notNull(),
   clientPhone: text("client_phone").notNull(),
   clientName: text("client_name"),
@@ -96,6 +123,7 @@ export const appointments = pgTable("appointments", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_appointments_provider").on(table.providerId),
+  index("idx_appointments_slot").on(table.slotId),
   index("idx_appointments_date").on(table.appointmentDate),
 ]);
 
@@ -176,6 +204,17 @@ export const providerProfilesRelations = relations(providerProfiles, ({ many }) 
   businessHours: many(businessHours),
   appointments: many(appointments),
   blockedSlots: many(blockedSlots),
+  slots: many(slots),
+}));
+
+export const slotsRelations = relations(slots, ({ one, many }) => ({
+  provider: one(providerProfiles, {
+    fields: [slots.providerId],
+    references: [providerProfiles.id],
+  }),
+  appointments: many(appointments),
+  businessHours: many(businessHours),
+  basePrices: many(basePrices),
 }));
 
 export const servicesRelations = relations(services, ({ one }) => ({
@@ -190,12 +229,20 @@ export const businessHoursRelations = relations(businessHours, ({ one }) => ({
     fields: [businessHours.providerId],
     references: [providerProfiles.id],
   }),
+  slot: one(slots, {
+    fields: [businessHours.slotId],
+    references: [slots.id],
+  }),
 }));
 
 export const appointmentsRelations = relations(appointments, ({ one }) => ({
   provider: one(providerProfiles, {
     fields: [appointments.providerId],
     references: [providerProfiles.id],
+  }),
+  slot: one(slots, {
+    fields: [appointments.slotId],
+    references: [slots.id],
   }),
   service: one(services, {
     fields: [appointments.serviceId],
@@ -268,9 +315,18 @@ export const insertSafetyBlacklistSchema = createInsertSchema(safetyBlacklist).o
   createdAt: true,
 });
 
+export const insertSlotSchema = createInsertSchema(slots).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type ProviderProfile = typeof providerProfiles.$inferSelect;
 export type InsertProviderProfile = z.infer<typeof insertProviderProfileSchema>;
+
+export type Slot = typeof slots.$inferSelect;
+export type InsertSlot = z.infer<typeof insertSlotSchema>;
 
 export type Service = typeof services.$inferSelect;
 export type InsertService = z.infer<typeof insertServiceSchema>;

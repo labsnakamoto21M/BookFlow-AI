@@ -5,6 +5,7 @@ import { registerAuthRoutes, isAuthenticated, isAdmin } from "./auth";
 import { whatsappManager } from "./whatsapp";
 import { startReminderService } from "./reminder";
 import { getUncachableStripeClient } from "./stripeClient";
+import { SUBSCRIPTION_PLANS, getMaxSlotsByPlan, getPlanByPriceId, getPriceIdForPlan } from "./stripe-plans";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { 
@@ -13,7 +14,8 @@ import {
   insertBlacklistSchema,
   insertBasePriceSchema,
   insertServiceExtraSchema,
-  insertCustomExtraSchema
+  insertCustomExtraSchema,
+  insertSlotSchema
 } from "@shared/schema";
 import { startOfWeek, endOfWeek, parseISO } from "date-fns";
 
@@ -182,6 +184,149 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating base prices:", error);
       res.status(500).json({ message: "Failed to update base prices" });
+    }
+  });
+
+  // Slots (Multi-agent management)
+  app.get("/api/slots", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const slotsList = await storage.getSlots(profile.id);
+      res.json(slotsList);
+    } catch (error) {
+      console.error("Error fetching slots:", error);
+      res.status(500).json({ message: "Failed to fetch slots" });
+    }
+  });
+
+  app.post("/api/slots", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const user = await storage.getUserById(profile.userId);
+      const maxSlots = profile.maxSlots || 1;
+      const existingSlots = await storage.getSlots(profile.id);
+      
+      if (existingSlots.length >= maxSlots) {
+        return res.status(403).json({ 
+          message: `Limite de ${maxSlots} numero(s) atteinte. Passez a un plan superieur.`,
+          maxSlots,
+          currentCount: existingSlots.length
+        });
+      }
+      
+      const data = insertSlotSchema.parse({ 
+        ...req.body, 
+        providerId: profile.id,
+        sortOrder: existingSlots.length
+      });
+      const slot = await storage.createSlot(data);
+      res.status(201).json(slot);
+    } catch (error) {
+      console.error("Error creating slot:", error);
+      res.status(500).json({ message: "Failed to create slot" });
+    }
+  });
+
+  app.get("/api/slots/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const slot = await storage.getSlot(id);
+      
+      if (!slot) {
+        return res.status(404).json({ message: "Slot not found" });
+      }
+      
+      if (slot.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      res.json(slot);
+    } catch (error) {
+      console.error("Error fetching slot:", error);
+      res.status(500).json({ message: "Failed to fetch slot" });
+    }
+  });
+
+  app.patch("/api/slots/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const slot = await storage.getSlot(id);
+      
+      if (!slot) {
+        return res.status(404).json({ message: "Slot not found" });
+      }
+      
+      if (slot.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      const updated = await storage.updateSlot(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating slot:", error);
+      res.status(500).json({ message: "Failed to update slot" });
+    }
+  });
+
+  app.delete("/api/slots/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const slot = await storage.getSlot(id);
+      
+      if (!slot) {
+        return res.status(404).json({ message: "Slot not found" });
+      }
+      
+      if (slot.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      await storage.deleteSlot(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting slot:", error);
+      res.status(500).json({ message: "Failed to delete slot" });
+    }
+  });
+
+  // Slot manual override (pause bot for 24h)
+  app.post("/api/slots/:id/manual-override", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const slot = await storage.getSlot(id);
+      
+      if (!slot || slot.providerId !== profile.id) {
+        return res.status(404).json({ message: "Slot not found" });
+      }
+      
+      const overrideUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
+      const updated = await storage.updateSlot(id, { manualOverrideUntil: overrideUntil });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error setting manual override:", error);
+      res.status(500).json({ message: "Failed to set manual override" });
+    }
+  });
+
+  app.delete("/api/slots/:id/manual-override", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const { id } = req.params;
+      const slot = await storage.getSlot(id);
+      
+      if (!slot || slot.providerId !== profile.id) {
+        return res.status(404).json({ message: "Slot not found" });
+      }
+      
+      const updated = await storage.updateSlot(id, { manualOverrideUntil: null });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error clearing manual override:", error);
+      res.status(500).json({ message: "Failed to clear manual override" });
     }
   });
 
@@ -725,7 +870,24 @@ export async function registerRoutes(
     }
   });
 
-  // Stripe Checkout Session - Create subscription
+  // Get available subscription plans
+  app.get("/api/stripe/plans", async (_req, res) => {
+    try {
+      const plans = Object.entries(SUBSCRIPTION_PLANS).map(([key, plan]) => ({
+        id: key,
+        name: plan.name,
+        price: plan.price / 100, // Convert cents to euros
+        slots: plan.slots,
+        available: !!plan.priceId,
+      }));
+      res.json(plans);
+    } catch (error) {
+      console.error("Error fetching plans:", error);
+      res.status(500).json({ message: "Failed to fetch plans" });
+    }
+  });
+
+  // Stripe Checkout Session - Create subscription with plan selection
   app.post("/api/stripe/create-checkout-session", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
@@ -735,10 +897,19 @@ export async function registerRoutes(
       const host = req.get('host');
       const baseUrl = `${protocol}://${host}`;
 
-      const priceId = process.env.STRIPE_PRICE_ID;
+      // Get plan from request body, default to solo
+      const selectedPlan = req.body.plan || 'solo';
+      const priceId = getPriceIdForPlan(selectedPlan);
+      
       if (!priceId) {
-        return res.status(500).json({ message: "STRIPE_PRICE_ID non configure" });
+        // Fallback to legacy STRIPE_PRICE_ID for backward compatibility
+        const legacyPriceId = process.env.STRIPE_PRICE_ID;
+        if (!legacyPriceId) {
+          return res.status(500).json({ message: "Plan non configure" });
+        }
       }
+
+      const finalPriceId = priceId || process.env.STRIPE_PRICE_ID;
 
       let customerId = profile.stripeCustomerId;
       
@@ -762,15 +933,16 @@ export async function registerRoutes(
         payment_method_types: ['card'],
         line_items: [
           {
-            price: priceId,
+            price: finalPriceId,
             quantity: 1,
           },
         ],
         mode: 'subscription',
-        success_url: `${baseUrl}/api/stripe/success?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${baseUrl}/api/stripe/success?session_id={CHECKOUT_SESSION_ID}&plan=${selectedPlan}`,
         cancel_url: `${baseUrl}/abonnement?cancelled=true`,
         metadata: {
           providerId: profile.id,
+          plan: selectedPlan,
         },
       });
 
@@ -785,6 +957,7 @@ export async function registerRoutes(
   app.get("/api/stripe/success", async (req, res) => {
     try {
       const sessionId = req.query.session_id as string;
+      const plan = (req.query.plan as string) || 'solo';
       
       if (!sessionId) {
         return res.redirect("/abonnement?error=missing_session");
@@ -794,9 +967,17 @@ export async function registerRoutes(
       const session = await stripe.checkout.sessions.retrieve(sessionId);
       
       if (session.payment_status === 'paid' && session.metadata?.providerId) {
+        const maxSlots = getMaxSlotsByPlan(plan);
         await storage.updateProviderProfile(session.metadata.providerId, {
           subscriptionStatus: 'active',
+          maxSlots: maxSlots,
         });
+        
+        // Update user subscription plan
+        const profile = await storage.getProviderProfileById(session.metadata.providerId);
+        if (profile) {
+          await storage.updateUserSubscriptionPlan(profile.userId, plan);
+        }
       }
 
       res.redirect("/abonnement?success=true");

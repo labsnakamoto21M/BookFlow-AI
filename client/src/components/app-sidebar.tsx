@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Ghost,
   Moon,
+  Users,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import {
@@ -39,6 +40,11 @@ const getMainMenuItems = (t: (key: string) => string) => [
     title: t("sidebar.dashboard"),
     url: "/",
     icon: LayoutDashboard,
+  },
+  {
+    title: t("sidebar.overview"),
+    url: "/overview",
+    icon: Users,
   },
   {
     title: t("sidebar.agenda"),

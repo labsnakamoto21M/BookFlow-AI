@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
-import { Shield, Lock, Ghost, Users, Globe, MessageSquare } from "lucide-react";
+import { Shield, Lock, Globe, Hand, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LightningLogo } from "@/components/lightning-logo";
 
@@ -16,6 +16,14 @@ const LANGUAGES = [
   { code: "hu", label: "HU" },
   { code: "it", label: "IT" },
   { code: "zh", label: "ZH" },
+] as const;
+
+const PLANS = [
+  { name: "SOLO", price: 49, slots: 1 },
+  { name: "DUO", price: 79, slots: 2 },
+  { name: "TRIO", price: 99, slots: 3 },
+  { name: "ELITE", price: 149, slots: 6 },
+  { name: "AGENCE", price: 229, slots: 15 },
 ] as const;
 
 function LanguageSelector() {
@@ -47,40 +55,117 @@ function LanguageSelector() {
   );
 }
 
-function StatCounter({ value, label }: { value: string; label: string }) {
+function WhatsAppMockup() {
+  const { t } = useTranslation();
+  
+  const messages = [
+    { from: "client", text: "Cc dispo 1h ?" },
+    { from: "bot", text: "cc! oui 100e. 20h ou 21h?" },
+    { from: "client", text: "20h c bon" },
+    { from: "bot", text: "ok c noter. je suis rue [X]. je tenvoie le num 15min avant. a tte" },
+  ];
+
   return (
-    <div className="text-center p-6 border border-primary/30 rounded-lg bg-black/50 neon-border hover:neon-border-strong transition-all">
-      <div className="font-mono text-4xl md:text-5xl font-bold text-primary neon-text-strong mb-2">
-        {value}
-      </div>
-      <div className="text-sm text-muted-foreground font-mono uppercase tracking-wider">
-        {label}
+    <div className="w-full max-w-sm mx-auto">
+      <div className="bg-zinc-900 rounded-lg border border-primary/30 overflow-hidden">
+        <div className="bg-zinc-800 px-4 py-2 flex items-center gap-3 border-b border-primary/20">
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+            <span className="text-primary font-mono text-xs">BOT</span>
+          </div>
+          <div>
+            <div className="font-mono text-xs text-primary">{t("landing.whatsappDemo")}</div>
+            <div className="font-mono text-[10px] text-muted-foreground">{t("landing.autoReply")}</div>
+          </div>
+        </div>
+        
+        <div className="p-4 space-y-3 min-h-[280px]">
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`flex ${msg.from === "client" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[80%] px-3 py-2 rounded-lg font-mono text-sm ${
+                  msg.from === "client"
+                    ? "bg-primary/20 text-primary"
+                    : "bg-zinc-800 text-muted-foreground border border-primary/20"
+                }`}
+              >
+                {msg.text}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function FeatureCard({ icon: Icon, title, description }: { icon: any; title: string; description: string }) {
+function OnboardingSteps() {
+  const { t } = useTranslation();
+  
+  const steps = [
+    { num: "1", text: t("landing.step1") },
+    { num: "2", text: t("landing.step2") },
+    { num: "3", text: t("landing.step3") },
+  ];
+
   return (
-    <div className="p-6 border border-primary/30 rounded-lg bg-black/50 neon-border hover:neon-border-strong transition-all group">
-      <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-        <Icon className="h-6 w-6 text-primary" />
-      </div>
-      <h3 className="font-mono text-lg font-bold text-primary mb-2">{title}</h3>
-      <p className="text-muted-foreground text-sm leading-relaxed">{description}</p>
+    <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8">
+      {steps.map((step, idx) => (
+        <div key={idx} className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full border-2 border-primary flex items-center justify-center">
+            <span className="font-mono text-lg font-bold text-primary">{step.num}</span>
+          </div>
+          <span className="font-mono text-sm text-muted-foreground">{step.text}</span>
+          {idx < steps.length - 1 && (
+            <span className="hidden md:block font-mono text-primary mx-2">{">"}</span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
-function SecurityBadge({ icon: Icon, label, description }: { icon: any; label: string; description: string }) {
+function TrustBadge({ icon: Icon, label }: { icon: any; label: string }) {
   return (
-    <div className="flex items-center gap-4 p-4 border border-primary/30 rounded-lg bg-black/50 neon-border">
-      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-        <Icon className="h-5 w-5 text-primary" />
-      </div>
-      <div>
-        <div className="font-mono text-sm font-bold text-primary">[{label}]</div>
-        <div className="text-xs text-muted-foreground">{description}</div>
+    <div className="flex items-center gap-2 px-3 py-1.5 border border-primary/30 rounded-md bg-black/50">
+      <Icon className="h-4 w-4 text-primary" />
+      <span className="font-mono text-xs text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function PricingCard({ name, price, slots, isPopular }: { name: string; price: number; slots: number; isPopular?: boolean }) {
+  const { t } = useTranslation();
+  
+  return (
+    <div className={`p-6 border rounded-lg bg-black/50 relative ${
+      isPopular ? "border-primary neon-border-strong" : "border-primary/30 neon-border"
+    }`}>
+      {isPopular && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-primary text-black font-mono text-xs rounded-full">
+          {t("landing.popular")}
+        </div>
+      )}
+      <div className="text-center">
+        <div className="font-mono text-xl font-bold text-primary mb-2">{name}</div>
+        <div className="font-mono text-3xl font-bold text-foreground mb-1">
+          {price}<span className="text-lg text-muted-foreground">/{t("common.month")}</span>
+        </div>
+        <div className="font-mono text-sm text-muted-foreground mb-4">
+          {slots} {slots > 1 ? t("landing.slots") : t("landing.slot")}
+        </div>
+        <Link href="/login">
+          <Button 
+            variant={isPopular ? "default" : "outline"} 
+            size="sm" 
+            className="w-full font-mono"
+            data-testid={`button-plan-${name.toLowerCase()}`}
+          >
+            {t("landing.selectPlan")}
+          </Button>
+        </Link>
       </div>
     </div>
   );
@@ -109,151 +194,80 @@ export default function LandingPage() {
       </header>
 
       <main className="pt-20">
-        <section className="container mx-auto px-4 py-20 md:py-32 text-center">
-          <div className="max-w-4xl mx-auto space-y-8">
-            <div className="space-y-2">
+        <section className="container mx-auto px-4 py-16 md:py-24">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <div className="space-y-6">
               <div className="font-mono text-xs text-primary/70 tracking-[0.3em] uppercase">
                 // {t("landing.systemOnline")}
               </div>
-              <h1 className="font-mono text-3xl md:text-5xl lg:text-6xl font-bold leading-tight">
+              <h1 className="font-mono text-3xl md:text-4xl lg:text-5xl font-bold leading-tight">
                 <span className="text-primary neon-text-strong">{t("landing.heroTitle1")}</span>
-                <br />
-                <span className="text-muted-foreground">{t("landing.heroTitle2")}</span>
               </h1>
-            </div>
-            
-            <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              {t("landing.heroSubtitle")}
-            </p>
-
-            <div className="pt-4">
-              <Link href="/login">
-                <Button 
-                  size="lg" 
-                  className="font-mono text-lg px-8 py-6 bg-primary text-black neon-border-strong animate-pulse"
-                  data-testid="button-access-system"
-                >
-                  [ {t("landing.accessSystem")} ]
-                </Button>
-              </Link>
-            </div>
-
-            <div className="pt-4 font-mono text-xs text-primary/50">
-              {">"} {t("landing.encryptedConnection")}
-            </div>
-          </div>
-        </section>
-
-        <section className="container mx-auto px-4 py-16 border-t border-primary/20">
-          <div className="text-center mb-12">
-            <div className="font-mono text-xs text-primary/70 tracking-[0.3em] uppercase mb-2">
-              // {t("landing.proofOfValue")}
-            </div>
-            <h2 className="font-mono text-2xl md:text-3xl font-bold text-primary neon-text">
-              {t("landing.keyStats")}
-            </h2>
-          </div>
-          
-          <div className="grid gap-6 md:grid-cols-3 max-w-4xl mx-auto">
-            <StatCounter value="+12.000" label={t("landing.stat1Label")} />
-            <StatCounter value="850+" label={t("landing.stat2Label")} />
-            <StatCounter value="0" label={t("landing.stat3Label")} />
-          </div>
-        </section>
-
-        <section className="container mx-auto px-4 py-16 border-t border-primary/20">
-          <div className="text-center mb-12">
-            <div className="font-mono text-xs text-primary/70 tracking-[0.3em] uppercase mb-2">
-              // {t("landing.secretFeatures")}
-            </div>
-            <h2 className="font-mono text-2xl md:text-3xl font-bold text-primary neon-text">
-              {t("landing.featuresTitle")}
-            </h2>
-          </div>
-          
-          <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
-            <FeatureCard 
-              icon={MessageSquare}
-              title={t("landing.feature1Title")}
-              description={t("landing.feature1Desc")}
-            />
-            <FeatureCard 
-              icon={Lock}
-              title={t("landing.feature2Title")}
-              description={t("landing.feature2Desc")}
-            />
-            <FeatureCard 
-              icon={Ghost}
-              title={t("landing.feature3Title")}
-              description={t("landing.feature3Desc")}
-            />
-            <FeatureCard 
-              icon={Shield}
-              title={t("landing.feature4Title")}
-              description={t("landing.feature4Desc")}
-            />
-          </div>
-        </section>
-
-        <section className="container mx-auto px-4 py-16 border-t border-primary/20">
-          <div className="text-center mb-12">
-            <div className="font-mono text-xs text-primary/70 tracking-[0.3em] uppercase mb-2">
-              // {t("landing.securitySection")}
-            </div>
-            <h2 className="font-mono text-2xl md:text-3xl font-bold text-primary neon-text">
-              {t("landing.privacyTitle")}
-            </h2>
-          </div>
-          
-          <div className="grid gap-4 md:grid-cols-3 max-w-4xl mx-auto">
-            <SecurityBadge 
-              icon={Shield}
-              label="ZERO_LOG_POLICY"
-              description={t("landing.badge1Desc")}
-            />
-            <SecurityBadge 
-              icon={Lock}
-              label="END_TO_END"
-              description={t("landing.badge2Desc")}
-            />
-            <SecurityBadge 
-              icon={Globe}
-              label="MULTILINGUAL"
-              description={t("landing.badge3Desc")}
-            />
-          </div>
-        </section>
-
-        <section className="container mx-auto px-4 py-16 border-t border-primary/20">
-          <div className="max-w-3xl mx-auto text-center space-y-8">
-            <div className="font-mono text-xs text-primary/70 tracking-[0.3em] uppercase">
-              // {t("landing.businessCase")}
-            </div>
-            
-            <div className="p-8 border border-primary/30 rounded-lg bg-black/50 neon-border">
-              <div className="font-mono text-3xl md:text-4xl font-bold text-primary neon-text mb-4">
-                50€<span className="text-lg text-muted-foreground">/{t("common.month")}</span>
-              </div>
-              <p className="text-muted-foreground leading-relaxed max-w-xl mx-auto">
-                {t("landing.businessDesc")}
+              <p className="font-mono text-muted-foreground leading-relaxed">
+                {t("landing.heroDesc")}
               </p>
+              
+              <div className="pt-4">
+                <Link href="/login">
+                  <Button 
+                    size="lg" 
+                    className="font-mono text-lg px-8 py-6 bg-primary text-black neon-border-strong animate-pulse"
+                    data-testid="button-access-system"
+                  >
+                    [ {t("landing.accessSystem")} ]
+                  </Button>
+                </Link>
+              </div>
             </div>
+            
+            <WhatsAppMockup />
+          </div>
+        </section>
 
-            <Link href="/login">
-              <Button 
-                size="lg" 
-                className="font-mono text-lg px-8 py-6 bg-primary text-black neon-border-strong animate-pulse"
-                data-testid="button-access-system-bottom"
-              >
-                [ {t("landing.accessSystem")} ]
-              </Button>
-            </Link>
+        <section className="container mx-auto px-4 py-12 border-t border-primary/20">
+          <div className="text-center mb-8">
+            <div className="font-mono text-xs text-primary/70 tracking-[0.3em] uppercase mb-2">
+              // {t("landing.howItWorks")}
+            </div>
+          </div>
+          <OnboardingSteps />
+        </section>
+
+        <section className="container mx-auto px-4 py-12 border-t border-primary/20">
+          <div className="flex flex-wrap gap-3 justify-center">
+            <TrustBadge icon={Globe} label={t("landing.badge11Lang")} />
+            <TrustBadge icon={Shield} label={t("landing.badgeZeroStorage")} />
+            <TrustBadge icon={Lock} label={t("landing.badgeSafetyBlacklist")} />
+            <TrustBadge icon={Hand} label={t("landing.badgeManualControl")} />
+          </div>
+        </section>
+
+        <section className="container mx-auto px-4 py-16 border-t border-primary/20">
+          <div className="text-center mb-12">
+            <div className="font-mono text-xs text-primary/70 tracking-[0.3em] uppercase mb-2">
+              // {t("landing.pricing")}
+            </div>
+            <h2 className="font-mono text-2xl md:text-3xl font-bold text-primary neon-text">
+              {t("landing.choosePlan")}
+            </h2>
+          </div>
+          
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 max-w-6xl mx-auto">
+            {PLANS.map((plan) => (
+              <PricingCard
+                key={plan.name}
+                name={plan.name}
+                price={plan.price}
+                slots={plan.slots}
+                isPopular={plan.name === "TRIO"}
+              />
+            ))}
           </div>
         </section>
 
         <footer className="container mx-auto px-4 py-8 border-t border-primary/20 text-center">
           <div className="font-mono text-xs text-primary/50 space-y-2">
-            <p>CHATSLOT v1.0 // "{t("landing.crackTheCode")}"</p>
+            <p>CHATSLOT v2.0 // "{t("landing.crackTheCode")}"</p>
             <p className="text-muted-foreground">{t("landing.footer")}</p>
           </div>
         </footer>

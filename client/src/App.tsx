@@ -13,6 +13,8 @@ import AuthPage from "@/pages/auth-page";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import LandingPage from "@/pages/landing";
 import DashboardPage from "@/pages/dashboard";
+import OverviewPage from "@/pages/overview";
+import SlotConfigPage from "@/pages/slot-config";
 import ServicesPage from "@/pages/services";
 import HorairesPage from "@/pages/horaires";
 import AgendaPage from "@/pages/agenda";
@@ -41,6 +43,9 @@ function AuthenticatedRouter() {
           <main className="flex-1 overflow-auto p-6">
             <Switch>
               <Route path="/" component={DashboardPage} />
+              <Route path="/overview" component={OverviewPage} />
+              <Route path="/slots/new" component={SlotConfigPage} />
+              <Route path="/slots/:id" component={SlotConfigPage} />
               <Route path="/services" component={ServicesPage} />
               <Route path="/horaires" component={HorairesPage} />
               <Route path="/agenda" component={AgendaPage} />
