@@ -61,6 +61,55 @@ class WhatsAppManager {
     return `${providerId}:${clientPhone}`;
   }
 
+  // PERSISTANCE DB: Récupère l'état de conversation depuis la base de données
+  private async getConversationStateFromDB(providerId: string, clientPhone: string): Promise<ConversationState> {
+    const dbSession = await storage.getConversationSession(providerId, clientPhone);
+    
+    // Si pas de session ou session expirée (30 min), créer une nouvelle
+    if (!dbSession || (dbSession.lastUpdate && Date.now() - new Date(dbSession.lastUpdate).getTime() > 30 * 60 * 1000)) {
+      const newState: ConversationState = {
+        type: null,
+        duration: null,
+        basePrice: 0,
+        extras: [],
+        extrasTotal: 0,
+        lastUpdate: Date.now(),
+        chatHistory: [],
+        serviceId: null,
+      };
+      return newState;
+    }
+    
+    // Convertir la session DB en ConversationState
+    return {
+      type: dbSession.sessionType as "private" | "escort" | null,
+      duration: dbSession.duration,
+      basePrice: dbSession.basePrice || 0,
+      extras: dbSession.extras || [],
+      extrasTotal: dbSession.extrasTotal || 0,
+      lastUpdate: dbSession.lastUpdate ? new Date(dbSession.lastUpdate).getTime() : Date.now(),
+      chatHistory: (dbSession.chatHistory as ChatMessage[]) || [],
+      serviceId: dbSession.serviceId,
+    };
+  }
+
+  // PERSISTANCE DB: Sauvegarde l'état de conversation dans la base de données
+  private async saveConversationStateToDB(providerId: string, clientPhone: string, state: ConversationState): Promise<void> {
+    await storage.upsertConversationSession({
+      providerId,
+      clientPhone,
+      serviceId: state.serviceId,
+      sessionType: state.type,
+      duration: state.duration,
+      basePrice: state.basePrice,
+      extras: state.extras,
+      extrasTotal: state.extrasTotal,
+      chatHistory: state.chatHistory,
+      lastUpdate: new Date(),
+    });
+  }
+
+  // LEGACY: Méthode synchrone pour compatibilité (utilise cache mémoire temporaire)
   private getConversationState(providerId: string, clientPhone: string): ConversationState {
     const key = this.getConversationKey(providerId, clientPhone);
     const state = this.conversationStates.get(key);
@@ -83,15 +132,41 @@ class WhatsAppManager {
     return state;
   }
 
+  // LEGACY: Met à jour le cache mémoire ET persiste en DB
+  private async updateConversationStateAsync(providerId: string, clientPhone: string, updates: Partial<ConversationState>): Promise<void> {
+    const key = this.getConversationKey(providerId, clientPhone);
+    const state = this.getConversationState(providerId, clientPhone);
+    const newState = { ...state, ...updates, lastUpdate: Date.now() };
+    this.conversationStates.set(key, newState);
+    
+    // Persister en DB
+    await this.saveConversationStateToDB(providerId, clientPhone, newState);
+  }
+
   private updateConversationState(providerId: string, clientPhone: string, updates: Partial<ConversationState>): void {
     const key = this.getConversationKey(providerId, clientPhone);
     const state = this.getConversationState(providerId, clientPhone);
-    this.conversationStates.set(key, { ...state, ...updates, lastUpdate: Date.now() });
+    const newState = { ...state, ...updates, lastUpdate: Date.now() };
+    this.conversationStates.set(key, newState);
+    
+    // Persister en DB de manière asynchrone (fire and forget)
+    this.saveConversationStateToDB(providerId, clientPhone, newState).catch(err => {
+      console.error("[WA-AI] Failed to persist conversation state:", err);
+    });
+  }
+
+  private async clearConversationStateAsync(providerId: string, clientPhone: string): Promise<void> {
+    const key = this.getConversationKey(providerId, clientPhone);
+    this.conversationStates.delete(key);
+    await storage.deleteConversationSession(providerId, clientPhone);
   }
 
   private clearConversationState(providerId: string, clientPhone: string): void {
     const key = this.getConversationKey(providerId, clientPhone);
     this.conversationStates.delete(key);
+    storage.deleteConversationSession(providerId, clientPhone).catch(err => {
+      console.error("[WA-AI] Failed to delete conversation session:", err);
+    });
   }
 
   private randomDelay(min: number, max: number): number {
