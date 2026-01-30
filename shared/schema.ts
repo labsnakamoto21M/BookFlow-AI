@@ -37,6 +37,7 @@ export const slots = pgTable("slots", {
   whatsappConnected: boolean("whatsapp_connected").default(false),
   whatsappSessionData: text("whatsapp_session_data"),
   manualOverrideUntil: timestamp("manual_override_until"), // Pause bot until this time (24h manual control)
+  customInstructions: text("custom_instructions"), // AI bot personality and behavior instructions
   isActive: boolean("is_active").default(true),
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
