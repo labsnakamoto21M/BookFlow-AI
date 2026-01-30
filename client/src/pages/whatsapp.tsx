@@ -76,6 +76,18 @@ export default function WhatsAppPage() {
     },
   });
 
+  const forceReconnectMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/whatsapp/force-reconnect"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/status"] });
+      setPollingEnabled(true);
+      toast({ title: "Succes", description: "Reconnexion en cours..." });
+    },
+    onError: () => {
+      toast({ title: "Erreur", description: "Impossible de reconnecter", variant: "destructive" });
+    },
+  });
+
   const renderPaymentRequired = () => (
     <div className="text-center space-y-6 py-8">
       <div className="h-32 w-32 mx-auto rounded-full bg-[#39FF14]/10 border-2 border-[#39FF14]/30 flex items-center justify-center">
@@ -220,15 +232,27 @@ export default function WhatsAppPage() {
                     Initialisation du navigateur securise en cours...
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => refetch()}
-                  className="border-[#39FF14]/50 text-[#39FF14] hover:bg-[#39FF14]/10"
-                  data-testid="button-retry"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Reessayer
-                </Button>
+                <div className="flex flex-col gap-2 items-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => refetch()}
+                    className="border-[#39FF14]/50 text-[#39FF14] hover:bg-[#39FF14]/10"
+                    data-testid="button-retry"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Verifier
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => forceReconnectMutation.mutate()}
+                    disabled={forceReconnectMutation.isPending}
+                    className="text-muted-foreground hover:text-[#39FF14]"
+                    data-testid="button-force-reconnect"
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${forceReconnectMutation.isPending ? "animate-spin" : ""}`} />
+                    {forceReconnectMutation.isPending ? "Reconnexion..." : "Forcer reconnexion"}
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>

@@ -639,6 +639,18 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/whatsapp/force-reconnect", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      await whatsappManager.forceReconnect(profile.id);
+      const status = whatsappManager.getStatus(profile.id);
+      res.json(status);
+    } catch (error) {
+      console.error("Error force reconnecting WhatsApp:", error);
+      res.status(500).json({ message: "Failed to force reconnect WhatsApp" });
+    }
+  });
+
   // QR Code as base64 image
   app.get("/api/whatsapp/qr", isAuthenticated, async (req: any, res) => {
     try {

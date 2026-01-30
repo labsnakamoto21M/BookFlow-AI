@@ -81,6 +81,21 @@ class WhatsAppManager {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
+  private async cleanAuthFiles(providerId: string): Promise<void> {
+    const authPath = `./auth_info_baileys/${providerId}`;
+    try {
+      if (fs.existsSync(authPath)) {
+        const files = fs.readdirSync(authPath);
+        for (const file of files) {
+          fs.unlinkSync(path.join(authPath, file));
+        }
+        console.log(`[WA-BAILEYS] Cleaned ${files.length} auth files for provider: ${providerId}`);
+      }
+    } catch (error: any) {
+      console.error(`[WA-BAILEYS] Error cleaning auth files:`, error?.message);
+    }
+  }
+
   async initSession(providerId: string): Promise<WhatsAppSession> {
     if (this.sessions.has(providerId)) {
       return this.sessions.get(providerId)!;
@@ -152,13 +167,16 @@ class WhatsAppManager {
           
           session.connected = false;
           session.phoneNumber = null;
+          session.qrCode = null;
           await storage.updateProviderProfile(providerId, { whatsappConnected: false });
 
           if (shouldReconnect) {
             setTimeout(() => this.connectSocket(providerId, session), 5000);
           } else {
-            session.qrCode = null;
+            // Logged out (401) - clean auth files for fresh QR code generation
             this.sessions.delete(providerId);
+            await this.cleanAuthFiles(providerId);
+            console.log(`[WA-BAILEYS] Auth files cleaned for provider: ${providerId}. Ready for new QR.`);
           }
         } else if (connection === "open") {
           console.log(`[WA-BAILEYS] Connected successfully for provider: ${providerId}`);
@@ -845,21 +863,70 @@ class WhatsAppManager {
       } catch (error) {
         // Silent fail on disconnect
       }
-      session.socket.end(undefined);
-      this.sessions.delete(providerId);
+      try {
+        session.socket.end(undefined);
+      } catch (e) {
+        // Ignore socket close errors
+      }
     }
+    this.sessions.delete(providerId);
+    // Clean auth files immediately after logout to allow fresh QR generation
+    await this.cleanAuthFiles(providerId);
     await storage.updateProviderProfile(providerId, { whatsappConnected: false });
+    console.log(`[WA-BAILEYS] Disconnected and cleaned for provider: ${providerId}`);
   }
 
   async refreshQR(providerId: string): Promise<void> {
     const session = this.sessions.get(providerId);
-    if (session && !session.connected) {
-      if (session.socket) {
-        session.socket.end(undefined);
-      }
-      this.sessions.delete(providerId);
-      await this.initSession(providerId);
+    
+    // Don't refresh if already connected - require explicit disconnect first
+    if (session?.connected) {
+      console.log(`[WA-BAILEYS] Session already connected for provider: ${providerId}, skipping refresh`);
+      return;
     }
+    
+    // Close existing socket if any
+    if (session?.socket) {
+      try {
+        session.socket.end(undefined);
+      } catch (e) {
+        // Ignore socket close errors
+      }
+    }
+    
+    // Remove session from map
+    this.sessions.delete(providerId);
+    
+    // Clean auth files to force new QR code generation
+    await this.cleanAuthFiles(providerId);
+    
+    // Start fresh session
+    console.log(`[WA-BAILEYS] Refreshing QR for provider: ${providerId}`);
+    await this.initSession(providerId);
+  }
+
+  async forceReconnect(providerId: string): Promise<void> {
+    console.log(`[WA-BAILEYS] Force reconnect requested for provider: ${providerId}`);
+    
+    const session = this.sessions.get(providerId);
+    
+    // Close and cleanup existing socket
+    if (session?.socket) {
+      try {
+        session.socket.end(undefined);
+      } catch (e) {
+        // Ignore socket close errors
+      }
+    }
+    
+    // Remove session and clean auth files
+    this.sessions.delete(providerId);
+    await this.cleanAuthFiles(providerId);
+    await storage.updateProviderProfile(providerId, { whatsappConnected: false });
+    
+    // Start fresh session for new QR code
+    await this.initSession(providerId);
+    console.log(`[WA-BAILEYS] Force reconnect completed for provider: ${providerId}`);
   }
 
   cleanupExpiredConversations(): void {
