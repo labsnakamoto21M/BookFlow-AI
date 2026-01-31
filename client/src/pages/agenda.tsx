@@ -24,8 +24,10 @@ import {
   Phone,
   Calendar,
   X,
-  Ban
+  Ban,
+  MessageCircle
 } from "lucide-react";
+import { SiWhatsapp } from "react-icons/si";
 import { 
   format, 
   startOfWeek, 
@@ -39,6 +41,9 @@ import {
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import type { Appointment, BlockedSlot, Service } from "@shared/schema";
+
+const normalizePhoneForWaMe = (phone: string) =>
+  phone.replace(/[^\d]/g, "").replace(/^00/, "");
 
 interface AppointmentWithService extends Appointment {
   service?: Service;
@@ -59,20 +64,47 @@ export default function AgendaPage() {
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  
+  const weekStartStr = format(weekStart, "yyyy-MM-dd");
+  const weekEndStr = format(weekEnd, "yyyy-MM-dd");
 
   const { data: appointments, isLoading: appointmentsLoading } = useQuery<AppointmentWithService[]>({
-    queryKey: ["/api/appointments", format(weekStart, "yyyy-MM-dd"), format(weekEnd, "yyyy-MM-dd")],
+    queryKey: [`/api/appointments?start=${weekStartStr}&end=${weekEndStr}`],
   });
 
   const { data: blockedSlots, isLoading: blockedLoading } = useQuery<BlockedSlot[]>({
-    queryKey: ["/api/blocked-slots", format(weekStart, "yyyy-MM-dd"), format(weekEnd, "yyyy-MM-dd")],
+    queryKey: [`/api/blocked-slots?start=${weekStartStr}&end=${weekEndStr}`],
   });
+
+  const { data: next24h, isLoading: next24hLoading } = useQuery<AppointmentWithService[]>({
+    queryKey: ["/api/appointments/next24h"],
+  });
+
+  const invalidateAppointmentsQueries = () => {
+    queryClient.invalidateQueries({ 
+      predicate: (query) => {
+        const key = query.queryKey[0];
+        return typeof key === 'string' && (
+          key.startsWith('/api/appointments') || 
+          key.startsWith('/api/dashboard')
+        );
+      }
+    });
+  };
+
+  const invalidateBlockedSlotsQueries = () => {
+    queryClient.invalidateQueries({ 
+      predicate: (query) => {
+        const key = query.queryKey[0];
+        return typeof key === 'string' && key.startsWith('/api/blocked-slots');
+      }
+    });
+  };
 
   const cancelMutation = useMutation({
     mutationFn: (id: string) => apiRequest("PATCH", `/api/appointments/${id}`, { status: "cancelled" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      invalidateAppointmentsQueries();
       toast({ title: "Succès", description: "Rendez-vous annulé" });
       setSelectedAppointment(null);
     },
@@ -84,8 +116,7 @@ export default function AgendaPage() {
   const noShowMutation = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/api/appointments/${id}/noshow`),
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      invalidateAppointmentsQueries();
       toast({ 
         title: "No-show enregistre", 
         description: `Message d'avertissement envoye. Total absences: ${data.noShowTotal}` 
@@ -101,7 +132,7 @@ export default function AgendaPage() {
     mutationFn: (data: { startTime: Date; endTime: Date; reason?: string }) => 
       apiRequest("POST", "/api/blocked-slots", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/blocked-slots"] });
+      invalidateBlockedSlotsQueries();
       toast({ title: "Succès", description: "Créneau bloqué" });
       setIsBlockDialogOpen(false);
       setBlockForm({ startTime: "09:00", endTime: "10:00", reason: "" });
@@ -114,7 +145,7 @@ export default function AgendaPage() {
   const unblockMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/blocked-slots/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/blocked-slots"] });
+      invalidateBlockedSlotsQueries();
       toast({ title: "Succès", description: "Créneau débloqué" });
     },
     onError: () => {
@@ -203,6 +234,62 @@ export default function AgendaPage() {
           </Button>
         </div>
       </div>
+
+      {/* Next 24h Section */}
+      <Card className="mb-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Clock className="h-5 w-5 text-primary" />
+            Prochaines 24h
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {next24hLoading ? (
+            <Skeleton className="h-12 w-full" />
+          ) : next24h && next24h.length > 0 ? (
+            <div className="space-y-2">
+              {next24h.map((apt) => {
+                const aptDate = typeof apt.appointmentDate === 'string' 
+                  ? parseISO(apt.appointmentDate) 
+                  : apt.appointmentDate;
+                return (
+                  <div 
+                    key={apt.id}
+                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover-elevate cursor-pointer"
+                    onClick={() => setSelectedAppointment(apt)}
+                    data-testid={`next24h-appointment-${apt.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono font-medium text-primary">
+                        {format(aptDate, "HH:mm")}
+                      </span>
+                      <span className="font-medium">{apt.clientName || "Client"}</span>
+                      <span className="text-muted-foreground text-sm">
+                        {apt.service?.name || "Service"}
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(`https://wa.me/${normalizePhoneForWaMe(apt.clientPhone)}`, "_blank");
+                      }}
+                      data-testid={`next24h-whatsapp-${apt.id}`}
+                    >
+                      <SiWhatsapp className="h-4 w-4 text-green-500" />
+                      WhatsApp
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">Aucun rendez-vous dans les prochaines 24h</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Week Grid */}
       <div className="grid grid-cols-7 gap-2">
@@ -353,6 +440,16 @@ export default function AgendaPage() {
                   <p className="text-sm text-muted-foreground">{selectedAppointment.notes}</p>
                 </div>
               )}
+
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={() => window.open(`https://wa.me/${normalizePhoneForWaMe(selectedAppointment.clientPhone)}`, "_blank")}
+                data-testid="button-continue-whatsapp"
+              >
+                <SiWhatsapp className="h-4 w-4 text-green-500" />
+                Continuer sur WhatsApp
+              </Button>
 
               <div className="flex gap-2 pt-2">
                 {selectedAppointment.status === "confirmed" && (

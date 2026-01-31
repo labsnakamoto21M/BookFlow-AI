@@ -1,0 +1,133 @@
+GOAL: Fix Agenda page so confirmed WhatsApp bookings appear correctly, add a “continue WhatsApp” action per appointment, and show a “Next 24h” list. Keep changes minimal.
+
+CONTEXT
+
+Frontend agenda is client/src/pages/agenda.tsx (provided).
+
+Agenda fetches: GET /api/appointments/:weekStart/:weekEnd using yyyy-MM-dd.
+
+Dashboard shows confirmed bookings via /api/appointments/upcoming, so DB inserts are OK.
+
+Problem: bookings appear in Dashboard but NOT in Agenda ⇒ weekly range endpoint or date boundaries are wrong (timezone).
+
+PART 1 — Backend: fix /api/appointments week range timezone (most likely root cause)
+
+Find the server route handler for:
+
+GET /api/appointments/:start/:end (or query params equivalent)
+
+It must parse start and end from strings like "2026-01-31".
+
+Fix date boundaries to be Europe/Brussels day boundaries converted to UTC before querying DB:
+
+Import from date-fns-tz:
+
+fromZonedTime and formatInTimeZone (if needed)
+
+Implementation details:
+
+startParam = req.params.start (yyyy-MM-dd)
+
+endParam = req.params.end
+
+Build local Brussels day boundaries:
+
+startLocal = ${startParam} 00:00:00``
+
+endLocal = ${endParam} 23:59:59``
+
+Convert to UTC Date objects:
+
+startUtc = fromZonedTime(startLocal, "Europe/Brussels")
+
+endUtc = fromZonedTime(endLocal, "Europe/Brussels")
+
+Query DB with:
+
+appointmentDate >= startUtc AND appointmentDate <= endUtc
+
+Do NOT use new Date(startParam) because that often creates UTC midnight and causes off-by-one in Brussels.
+
+Ensure the endpoint returns appointments even if serviceId is null:
+
+If the endpoint currently does an INNER JOIN with services, switch to LEFT JOIN (or do separate fetch).
+
+Return shape compatible with Agenda:
+
+AppointmentWithService where service can be missing/undefined (Agenda already supports service?: Service).
+
+Acceptance:
+
+If an appointment exists at 2026-01-31 16:30 Brussels, it must be returned when weekStart/weekEnd include 2026-01-31.
+
+PART 2 — Frontend: add “Continue WhatsApp” action in the appointment dialog
+
+In client/src/pages/agenda.tsx, inside the Appointment Details Dialog, add a button:
+
+Label: Continuer sur WhatsApp
+
+Link: open new tab to https://wa.me/${normalizedPhone}
+
+Add helper near top of the file:
+
+const normalizePhoneForWaMe = (phone: string) =>
+  phone.replace(/[^\d]/g, "").replace(/^00/, "");
+
+
+Then in the dialog (where it shows clientPhone), add:
+
+window.open(https://wa.me/${normalizePhoneForWaMe(selectedAppointment.clientPhone)}`
+, "_blank")`
+
+Do not change existing cancel/no-show buttons.
+
+Acceptance:
+
+Clicking opens WhatsApp chat with that number.
+
+PART 3 — Frontend: add “Prochaines 24h” section without redesigning the week grid
+
+Add a new API endpoint:
+
+GET /api/appointments/next24h
+
+It returns confirmed appointments between now and now+24h.
+
+Same provider scoping as Dashboard routes.
+
+Use DB query on appointmentDate (UTC) with new Date() and new Date(Date.now() + 24h).
+
+In client/src/pages/agenda.tsx, add a new query:
+
+const { data: next24h, isLoading: next24hLoading } = useQuery<AppointmentWithService[]>({
+  queryKey: ["/api/appointments/next24h"],
+});
+
+
+Render it above the week grid with minimal UI:
+
+Card title: “Prochaines 24h”
+
+For each appointment show:
+
+Time (HH:mm) + clientName + service name
+
+Button “WhatsApp” that opens wa.me link
+
+Clicking line can also open details dialog (setSelectedAppointment(apt))
+
+Use the same parsing you already do, but format with date-fns format(...).
+
+Acceptance:
+
+A booking made now shows instantly in Next 24h list.
+
+DELIVERABLE
+
+Code compiles.
+
+Bookings visible in Dashboard AND Agenda week grid.
+
+Prochaines 24h list visible.
+
+Appointment dialog has a “Continuer sur WhatsApp” button.

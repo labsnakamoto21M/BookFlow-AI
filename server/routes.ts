@@ -18,6 +18,9 @@ import {
   insertSlotSchema
 } from "@shared/schema";
 import { startOfWeek, endOfWeek, parseISO } from "date-fns";
+import { fromZonedTime } from "date-fns-tz";
+
+const BRUSSELS_TZ = "Europe/Brussels";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -450,22 +453,34 @@ export async function registerRoutes(
   app.get("/api/appointments", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const startDate = req.query.start 
-        ? parseISO(req.query.start as string) 
-        : startOfWeek(new Date(), { weekStartsOn: 1 });
-      const endDate = req.query.end 
-        ? parseISO(req.query.end as string) 
-        : endOfWeek(new Date(), { weekStartsOn: 1 });
+      
+      // Use Brussels timezone for date boundaries
+      let startDate: Date;
+      let endDate: Date;
+      
+      if (req.query.start && req.query.end) {
+        // Convert Brussels local day boundaries to UTC
+        // e.g., "2026-01-31" 00:00:00 Brussels → UTC
+        const startParam = req.query.start as string;
+        const endParam = req.query.end as string;
+        startDate = fromZonedTime(`${startParam} 00:00:00`, BRUSSELS_TZ);
+        endDate = fromZonedTime(`${endParam} 23:59:59`, BRUSSELS_TZ);
+      } else {
+        // Default to current week in Brussels timezone
+        const now = new Date();
+        startDate = startOfWeek(now, { weekStartsOn: 1 });
+        endDate = endOfWeek(now, { weekStartsOn: 1 });
+      }
 
       const appointments = await storage.getAppointments(profile.id, startDate, endDate);
       
-      // Get services for each appointment
+      // Get services for each appointment (LEFT JOIN behavior - serviceId can be null)
       const services = await storage.getServices(profile.id);
       const serviceMap = new Map(services.map(s => [s.id, s]));
       
       const appointmentsWithService = appointments.map(apt => ({
         ...apt,
-        service: serviceMap.get(apt.serviceId),
+        service: apt.serviceId ? serviceMap.get(apt.serviceId) : undefined,
       }));
 
       res.json(appointmentsWithService);
@@ -485,12 +500,38 @@ export async function registerRoutes(
       
       const appointmentsWithService = appointments.map(apt => ({
         ...apt,
-        service: serviceMap.get(apt.serviceId),
+        service: apt.serviceId ? serviceMap.get(apt.serviceId) : undefined,
       }));
 
       res.json(appointmentsWithService);
     } catch (error) {
       console.error("Error fetching upcoming appointments:", error);
+      res.status(500).json({ message: "Failed to fetch appointments" });
+    }
+  });
+
+  // Next 24h appointments endpoint
+  app.get("/api/appointments/next24h", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const now = new Date();
+      const in24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      
+      // Get confirmed appointments in the next 24 hours
+      const appointments = await storage.getAppointments(profile.id, now, in24h);
+      const confirmedAppointments = appointments.filter(apt => apt.status === "confirmed");
+      
+      const services = await storage.getServices(profile.id);
+      const serviceMap = new Map(services.map(s => [s.id, s]));
+      
+      const appointmentsWithService = confirmedAppointments.map(apt => ({
+        ...apt,
+        service: apt.serviceId ? serviceMap.get(apt.serviceId) : undefined,
+      }));
+
+      res.json(appointmentsWithService);
+    } catch (error) {
+      console.error("Error fetching next 24h appointments:", error);
       res.status(500).json({ message: "Failed to fetch appointments" });
     }
   });
