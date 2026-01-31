@@ -526,8 +526,9 @@ class WhatsAppManager {
     const nowBrussels = toZonedTime(new Date(), BRUSSELS_TZ);
     const today = nowBrussels;
     const tomorrow = addDays(today, 1);
-    const todaySlots = await this.getAvailableSlots(providerId, today, businessHours);
-    const tomorrowSlots = await this.getAvailableSlots(providerId, tomorrow, businessHours);
+    // SLOT-AWARE: Pass slotId to filter appointments by slot
+    const todaySlots = await this.getAvailableSlots(providerId, today, businessHours, slotId);
+    const tomorrowSlots = await this.getAvailableSlots(providerId, tomorrow, businessHours, slotId);
     
     const activePrices = basePrices.filter(p => p.active);
     const activeExtras = serviceExtras.filter(e => e.active);
@@ -754,13 +755,13 @@ Reponds au dernier message du client.`;
           
           // Validation des créneaux même sans service (serviceId NULLABLE)
           const targetDate = isTomorrow ? addDays(new Date(), 1) : new Date();
-          const availableSlots = await this.getAvailableSlots(providerId, targetDate, businessHours);
+          const availableSlots = await this.getAvailableSlots(providerId, targetDate, businessHours, slotId);
           const requestedTime = format(appointmentDate, "HH:mm");
           
           if (!availableSlots.includes(requestedTime)) {
             if (availableSlots.length === 0) {
               const altDate = isTomorrow ? addDays(new Date(), 2) : addDays(new Date(), 1);
-              const altSlots = await this.getAvailableSlots(providerId, altDate, businessHours);
+              const altSlots = await this.getAvailableSlots(providerId, altDate, businessHours, slotId);
               const altLabel = isTomorrow ? "apres-demain" : "demain";
               if (altSlots.length > 0) {
                 aiResponse = `desole plus de creneau ${isTomorrow ? "demain" : "aujourd'hui"}. dispo ${altLabel}: ${altSlots.slice(0, 4).join(", ")}`;
@@ -781,6 +782,7 @@ Reponds au dernier message du client.`;
               
               await storage.createAppointment({
                 providerId,
+                slotId: slotId || null, // SLOT-AWARE: Link appointment to specific slot
                 serviceId: selectedService?.id || null, // NULLABLE: plus jamais d'erreur technique
                 clientPhone,
                 clientName: "",
@@ -1177,7 +1179,7 @@ Reponds au dernier message du client.`;
     return response;
   }
 
-  private async getAvailableSlots(providerId: string, date: Date, businessHours: any[]): Promise<string[]> {
+  private async getAvailableSlots(providerId: string, date: Date, businessHours: any[], slotId: string | null = null): Promise<string[]> {
     const brusselsDate = toZonedTime(date, BRUSSELS_TZ);
     const dayOfWeek = brusselsDate.getDay();
     const dayHours = businessHours.find(h => h.dayOfWeek === dayOfWeek);
@@ -1193,7 +1195,11 @@ Reponds au dernier message du client.`;
     const startOfDayDate = startOfDay(date);
     const endOfDayDate = endOfDay(date);
 
-    const existingAppointments = await storage.getAppointments(providerId, startOfDayDate, endOfDayDate);
+    const allAppointments = await storage.getAppointments(providerId, startOfDayDate, endOfDayDate);
+    // SLOT-AWARE: Filter appointments by slotId if provided
+    const existingAppointments = slotId 
+      ? allAppointments.filter(apt => apt.slotId === slotId)
+      : allAppointments;
     const blockedSlots = await storage.getBlockedSlots(providerId, startOfDayDate, endOfDayDate);
 
     let currentHour = openH;
