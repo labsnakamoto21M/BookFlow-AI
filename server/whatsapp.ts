@@ -35,8 +35,23 @@ interface WhatsAppSession {
   connected: boolean;
   phoneNumber: string | null;
   providerId: string;
+  slotId: string | null; // Resolved slot ID based on WhatsApp phone number
   createdAt: number;
   lastRestart: number;
+}
+
+// Phone normalization helper: strips spaces, dashes, parentheses, leading +, leading 00
+function normalizePhone(phone: string | null | undefined): string {
+  if (!phone) return "";
+  // Remove all non-digit characters except leading + or 00
+  let normalized = phone.replace(/[\s\-\(\)\.]/g, "");
+  // Remove leading + or 00
+  if (normalized.startsWith("+")) {
+    normalized = normalized.substring(1);
+  } else if (normalized.startsWith("00")) {
+    normalized = normalized.substring(2);
+  }
+  return normalized;
 }
 
 interface ConversationState {
@@ -178,6 +193,7 @@ class WhatsAppManager {
       connected: false,
       phoneNumber: null,
       providerId,
+      slotId: null, // Will be resolved on connection=open
       createdAt: now,
       lastRestart: now,
     };
@@ -243,12 +259,29 @@ class WhatsAppManager {
             console.log(`[WA-BAILEYS] Auth files cleaned for provider: ${providerId}. Ready for new QR.`);
           }
         } else if (connection === "open") {
-          console.log(`[WA-BAILEYS] Connected successfully for provider: ${providerId}`);
           session.connected = true;
           session.qrCode = null;
           
           const user = socket.user;
           session.phoneNumber = user?.id?.split(":")[0] || user?.id?.split("@")[0] || null;
+          
+          // SLOT-AWARE: Resolve slotId by matching WhatsApp phone to slot phone
+          let resolvedSlotId: string | null = null;
+          if (session.phoneNumber) {
+            const normalizedSessionPhone = normalizePhone(session.phoneNumber);
+            const providerSlots = await storage.getSlots(providerId);
+            for (const slot of providerSlots) {
+              const normalizedSlotPhone = normalizePhone(slot.phone);
+              if (normalizedSlotPhone && normalizedSlotPhone === normalizedSessionPhone) {
+                resolvedSlotId = slot.id;
+                break;
+              }
+            }
+          }
+          session.slotId = resolvedSlotId;
+          
+          // Log connection with slot info
+          console.log(`[WA-BAILEYS] Connected: providerId=${providerId}, phone=${session.phoneNumber}, slotId=${resolvedSlotId || "none"}`);
           
           await storage.updateProviderProfile(providerId, { whatsappConnected: true });
         }
