@@ -56,20 +56,47 @@ const logger = pino({ level: "silent" });
 
 class WhatsAppManager {
   private sessions: Map<string, WhatsAppSession> = new Map();
-  private conversationStates: Map<string, ConversationState> = new Map();
   private awayMessageSent: Map<string, number> = new Map();
 
-  private getConversationKey(providerId: string, clientPhone: string): string {
-    return `${providerId}:${clientPhone}`;
-  }
-
-  // PERSISTANCE DB: Récupère l'état de conversation depuis la base de données
-  private async getConversationStateFromDB(providerId: string, clientPhone: string): Promise<ConversationState> {
-    const dbSession = await storage.getConversationSession(providerId, clientPhone);
-    
-    // Si pas de session ou session expirée (30 min), créer une nouvelle
-    if (!dbSession || (dbSession.lastUpdate && Date.now() - new Date(dbSession.lastUpdate).getTime() > 30 * 60 * 1000)) {
-      const newState: ConversationState = {
+  // DB ONLY: Load conversation state from database (single source of truth)
+  private async loadState(providerId: string, clientPhone: string): Promise<ConversationState> {
+    try {
+      const dbSession = await storage.getConversationSession(providerId, clientPhone);
+      
+      // Si pas de session ou session expirée (30 min), créer une nouvelle
+      if (!dbSession || (dbSession.lastUpdate && Date.now() - new Date(dbSession.lastUpdate).getTime() > 30 * 60 * 1000)) {
+        const newState: ConversationState = {
+          type: null,
+          duration: null,
+          basePrice: 0,
+          extras: [],
+          extrasTotal: 0,
+          lastUpdate: Date.now(),
+          chatHistory: [],
+          serviceId: null,
+          slotMapping: {},
+          detectedLanguage: "fr",
+        };
+        return newState;
+      }
+      
+      // Convertir la session DB en ConversationState
+      return {
+        type: dbSession.sessionType as "private" | "escort" | null,
+        duration: dbSession.duration,
+        basePrice: dbSession.basePrice || 0,
+        extras: dbSession.extras || [],
+        extrasTotal: dbSession.extrasTotal || 0,
+        lastUpdate: dbSession.lastUpdate ? new Date(dbSession.lastUpdate).getTime() : Date.now(),
+        chatHistory: (dbSession.chatHistory as ChatMessage[]) || [],
+        serviceId: dbSession.serviceId,
+        slotMapping: (dbSession.slotMapping as Record<number, string>) || {},
+        detectedLanguage: dbSession.detectedLanguage || "fr",
+      };
+    } catch (error) {
+      console.error("[WA-STATE] Failed to load state from DB:", error);
+      // Return fresh state on DB error
+      return {
         type: null,
         duration: null,
         basePrice: 0,
@@ -81,102 +108,37 @@ class WhatsAppManager {
         slotMapping: {},
         detectedLanguage: "fr",
       };
-      return newState;
     }
-    
-    // Convertir la session DB en ConversationState
-    return {
-      type: dbSession.sessionType as "private" | "escort" | null,
-      duration: dbSession.duration,
-      basePrice: dbSession.basePrice || 0,
-      extras: dbSession.extras || [],
-      extrasTotal: dbSession.extrasTotal || 0,
-      lastUpdate: dbSession.lastUpdate ? new Date(dbSession.lastUpdate).getTime() : Date.now(),
-      chatHistory: (dbSession.chatHistory as ChatMessage[]) || [],
-      serviceId: dbSession.serviceId,
-      slotMapping: (dbSession.slotMapping as Record<number, string>) || {},
-      detectedLanguage: dbSession.detectedLanguage || "fr",
-    };
   }
 
-  // PERSISTANCE DB: Sauvegarde l'état de conversation dans la base de données
-  private async saveConversationStateToDB(providerId: string, clientPhone: string, state: ConversationState): Promise<void> {
+  // DB ONLY: Persist conversation state to database (awaited, no fire-and-forget)
+  private async persistState(providerId: string, clientPhone: string, state: ConversationState): Promise<ConversationState> {
+    const updatedState = { ...state, lastUpdate: Date.now() };
     await storage.upsertConversationSession({
       providerId,
       clientPhone,
-      serviceId: state.serviceId,
-      sessionType: state.type,
-      duration: state.duration,
-      basePrice: state.basePrice,
-      extras: state.extras,
-      extrasTotal: state.extrasTotal,
-      chatHistory: state.chatHistory,
-      slotMapping: state.slotMapping,
-      detectedLanguage: state.detectedLanguage,
+      serviceId: updatedState.serviceId,
+      sessionType: updatedState.type,
+      duration: updatedState.duration,
+      basePrice: updatedState.basePrice,
+      extras: updatedState.extras,
+      extrasTotal: updatedState.extrasTotal,
+      chatHistory: updatedState.chatHistory,
+      slotMapping: updatedState.slotMapping,
+      detectedLanguage: updatedState.detectedLanguage,
       lastUpdate: new Date(),
     });
+    return updatedState;
   }
 
-  // LEGACY: Méthode synchrone pour compatibilité (utilise cache mémoire temporaire)
-  private getConversationState(providerId: string, clientPhone: string): ConversationState {
-    const key = this.getConversationKey(providerId, clientPhone);
-    const state = this.conversationStates.get(key);
-    
-    if (!state || Date.now() - state.lastUpdate > 30 * 60 * 1000) {
-      const newState: ConversationState = {
-        type: null,
-        duration: null,
-        basePrice: 0,
-        extras: [],
-        extrasTotal: 0,
-        lastUpdate: Date.now(),
-        chatHistory: [],
-        serviceId: null,
-        slotMapping: {},
-        detectedLanguage: "fr",
-      };
-      this.conversationStates.set(key, newState);
-      return newState;
-    }
-    
-    return state;
-  }
-
-  // LEGACY: Met à jour le cache mémoire ET persiste en DB
-  private async updateConversationStateAsync(providerId: string, clientPhone: string, updates: Partial<ConversationState>): Promise<void> {
-    const key = this.getConversationKey(providerId, clientPhone);
-    const state = this.getConversationState(providerId, clientPhone);
-    const newState = { ...state, ...updates, lastUpdate: Date.now() };
-    this.conversationStates.set(key, newState);
-    
-    // Persister en DB
-    await this.saveConversationStateToDB(providerId, clientPhone, newState);
-  }
-
-  private updateConversationState(providerId: string, clientPhone: string, updates: Partial<ConversationState>): void {
-    const key = this.getConversationKey(providerId, clientPhone);
-    const state = this.getConversationState(providerId, clientPhone);
-    const newState = { ...state, ...updates, lastUpdate: Date.now() };
-    this.conversationStates.set(key, newState);
-    
-    // Persister en DB de manière asynchrone (fire and forget)
-    this.saveConversationStateToDB(providerId, clientPhone, newState).catch(err => {
-      console.error("[WA-AI] Failed to persist conversation state:", err);
-    });
-  }
-
-  private async clearConversationStateAsync(providerId: string, clientPhone: string): Promise<void> {
-    const key = this.getConversationKey(providerId, clientPhone);
-    this.conversationStates.delete(key);
+  // Clear conversation state from DB
+  private async clearState(providerId: string, clientPhone: string): Promise<void> {
     await storage.deleteConversationSession(providerId, clientPhone);
   }
 
-  private clearConversationState(providerId: string, clientPhone: string): void {
-    const key = this.getConversationKey(providerId, clientPhone);
-    this.conversationStates.delete(key);
-    storage.deleteConversationSession(providerId, clientPhone).catch(err => {
-      console.error("[WA-AI] Failed to delete conversation session:", err);
-    });
+  // Helper for awayMessageSent key
+  private getConversationKey(providerId: string, clientPhone: string): string {
+    return `${providerId}:${clientPhone}`;
   }
 
   private randomDelay(min: number, max: number): number {
@@ -501,7 +463,8 @@ class WhatsAppManager {
     userMessage: string,
     profile: any
   ): Promise<string> {
-    const convState = this.getConversationState(providerId, clientPhone);
+    // DB SINGLE SOURCE OF TRUTH: Load state from database
+    let convState = await this.loadState(providerId, clientPhone);
     
     // SYNCHRONISATION TEMPS RÉEL: Récupération FRAÎCHE des données à chaque message
     const basePrices = await storage.getBasePrices(providerId);
@@ -606,8 +569,13 @@ class WhatsAppManager {
       });
     }
     
-    // Persister le slotMapping en base de données
-    this.updateConversationState(providerId, clientPhone, { slotMapping });
+    // Persister le slotMapping en base de données (DB SINGLE SOURCE OF TRUTH)
+    try {
+      convState = await this.persistState(providerId, clientPhone, { ...convState, slotMapping });
+    } catch (dbError) {
+      console.error("[WA-STATE] Failed to persist slotMapping:", dbError);
+      return "desole bug interne. reessaie.";
+    }
     
     const externalUrl = profile.externalProfileUrl || "";
     
@@ -725,7 +693,12 @@ Reponds au dernier message du client.`;
             // Priorité 2: Premier service actif
             const fallbackService = service1h || activeServices[0];
             selectedServiceId = fallbackService.id;
-            this.updateConversationState(providerId, clientPhone, { serviceId: selectedServiceId });
+            try {
+              convState = await this.persistState(providerId, clientPhone, { ...convState, serviceId: selectedServiceId });
+            } catch (dbError) {
+              console.error("[WA-STATE] Failed to persist serviceId:", dbError);
+              return "desole bug interne. reessaie.";
+            }
             console.log(`[WA-AI] Service forcé (${service1h ? '1h trouvé' : 'fallback'}): ${selectedServiceId}`);
           }
           
@@ -778,14 +751,20 @@ Reponds au dernier message du client.`;
                 // Forcer le message de confirmation (remplace la réponse IA)
                 aiResponse = `ok c confirmer pour ${bookedTime}. je suis ${gpsAddress}. regarde sur google maps. je tenvoi le num exact 15min avant. sois la.`;
                 
-                this.updateConversationState(providerId, clientPhone, {
-                  type: null,
-                  duration: null,
-                  basePrice: 0,
-                  extras: [],
-                  extrasTotal: 0,
-                  slotMapping: {},
-                });
+                // Reset conversation state after booking (DB SINGLE SOURCE OF TRUTH)
+                try {
+                  convState = await this.persistState(providerId, clientPhone, {
+                    ...convState,
+                    type: null,
+                    duration: null,
+                    basePrice: 0,
+                    extras: [],
+                    extrasTotal: 0,
+                    slotMapping: {},
+                  });
+                } catch (dbError) {
+                  console.error("[WA-STATE] Failed to persist reset state:", dbError);
+                }
             } catch (bookingError) {
               console.error("[WA-AI] Error creating appointment:", bookingError);
               aiResponse = "desole y'a eu un bug, reessaie stp";
@@ -794,8 +773,14 @@ Reponds au dernier message du client.`;
         }
       }
       
+      // Persist chat history (DB SINGLE SOURCE OF TRUTH)
       convState.chatHistory.push({ role: "assistant", content: aiResponse });
-      this.updateConversationState(providerId, clientPhone, { chatHistory: convState.chatHistory });
+      try {
+        await this.persistState(providerId, clientPhone, { ...convState, chatHistory: convState.chatHistory });
+      } catch (dbError) {
+        console.error("[WA-STATE] Failed to persist chatHistory:", dbError);
+        // Don't return error for chatHistory failure - message still goes through
+      }
       
       return this.censorText(aiResponse);
     } catch (error) {
@@ -937,10 +922,18 @@ Reponds au dernier message du client.`;
       return "j'ai pas compris, tape le numero (1, 2, 3...)";
     }
 
-    this.updateConversationState(providerId, clientPhone, { 
-      duration: selectedDuration, 
-      basePrice: selectedPrice 
-    });
+    // DB SINGLE SOURCE OF TRUTH: Persist duration selection
+    const currentState = await this.loadState(providerId, clientPhone);
+    try {
+      await this.persistState(providerId, clientPhone, { 
+        ...currentState,
+        duration: selectedDuration, 
+        basePrice: selectedPrice 
+      });
+    } catch (dbError) {
+      console.error("[WA-STATE] Failed to persist duration:", dbError);
+      return "desole bug interne. reessaie.";
+    }
 
     const label = durationLabels[selectedDuration] || `${selectedDuration}min`;
     const typeLabel = type === "private" ? "chez moi" : "deplacement";
@@ -953,8 +946,9 @@ Reponds au dernier message du client.`;
     return response;
   }
 
-  private generateTotalRecap(providerId: string, clientPhone: string): string {
-    const state = this.getConversationState(providerId, clientPhone);
+  private async generateTotalRecap(providerId: string, clientPhone: string): Promise<string> {
+    // DB SINGLE SOURCE OF TRUTH: Load state from database
+    const state = await this.loadState(providerId, clientPhone);
     
     if (!state.type || !state.duration) {
       return "pas de selection en cours\n\ntape *prive* ou *escort* pour commencer";
@@ -974,7 +968,7 @@ Reponds au dernier message du client.`;
     response += `base: ${state.basePrice}e\n`;
     
     if (state.extras.length > 0) {
-      response += `extras: ${state.extras.map(e => this.censorText(e)).join(", ")}\n`;
+      response += `extras: ${state.extras.map((e: string) => this.censorText(e)).join(", ")}\n`;
       response += `+ ${state.extrasTotal}e\n`;
     }
     
@@ -987,7 +981,8 @@ Reponds au dernier message du client.`;
   private async generateExtrasList(providerId: string, clientPhone: string): Promise<string> {
     const serviceExtras = await storage.getServiceExtras(providerId);
     const customExtras = await storage.getCustomExtras(providerId);
-    const state = this.getConversationState(providerId, clientPhone);
+    // DB SINGLE SOURCE OF TRUTH: Load state from database
+    const state = await this.loadState(providerId, clientPhone);
     
     const activeExtras = serviceExtras.filter(e => e.active);
     const activeCustom = customExtras.filter(e => e.active);
@@ -1021,7 +1016,8 @@ Reponds au dernier message du client.`;
   private async handleExtraSelection(providerId: string, clientPhone: string, selection: string): Promise<string> {
     const serviceExtras = await storage.getServiceExtras(providerId);
     const customExtras = await storage.getCustomExtras(providerId);
-    const state = this.getConversationState(providerId, clientPhone);
+    // DB SINGLE SOURCE OF TRUTH: Load state from database
+    const state = await this.loadState(providerId, clientPhone);
     
     const activeExtras = serviceExtras.filter(e => e.active);
     const activeCustom = customExtras.filter(e => e.active);
@@ -1055,10 +1051,17 @@ Reponds au dernier message du client.`;
     const newExtras = [...state.extras, selectedExtra.name];
     const newExtrasTotal = state.extrasTotal + (selectedExtra.price / 100);
     
-    this.updateConversationState(providerId, clientPhone, {
-      extras: newExtras,
-      extrasTotal: newExtrasTotal,
-    });
+    // DB SINGLE SOURCE OF TRUTH: Persist extras selection
+    try {
+      await this.persistState(providerId, clientPhone, {
+        ...state,
+        extras: newExtras,
+        extrasTotal: newExtrasTotal,
+      });
+    } catch (dbError) {
+      console.error("[WA-STATE] Failed to persist extras:", dbError);
+      return "desole bug interne. reessaie.";
+    }
 
     const total = state.basePrice + newExtrasTotal;
     
@@ -1358,16 +1361,11 @@ Reponds au dernier message du client.`;
   }
 
   cleanupExpiredConversations(): void {
+    // DB handles conversation state expiration via lastUpdate check in loadState()
+    // No in-memory state to clean up anymore (DB is single source of truth)
+    
+    // Clean up awayMessageSent cache only
     const now = Date.now();
-    const thirtyMinutes = 30 * 60 * 1000;
-
-    const convEntries = Array.from(this.conversationStates.entries());
-    for (const [key, state] of convEntries) {
-      if (now - state.lastUpdate > thirtyMinutes) {
-        this.conversationStates.delete(key);
-      }
-    }
-
     const oneHour = 60 * 60 * 1000;
     const awayEntries = Array.from(this.awayMessageSent.entries());
     for (const [key, timestamp] of awayEntries) {
