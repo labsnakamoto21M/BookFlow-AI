@@ -402,15 +402,17 @@ class WhatsAppManager {
     const session = this.sessions.get(providerId);
     const slotId = session?.slotId || null;
 
-    // POST-BOOKING ADDRESS HANDLER: Answer address queries without restarting funnel
-    const addressKeywords = ["adresse", "ou", "où", "maps", "google", "localisation", "loc", "c'est ou", "cest ou", "address", "where", "location"];
-    const isAddressQuery = addressKeywords.some(kw => content.includes(kw));
+    // POST-BOOKING GATE: Block funnel restarts within 2 hours of booking
+    const state = await this.loadState(providerId, clientPhone);
+    const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+    const isWithinPostBookingWindow = state.lastBookingAt && state.lastBookingAt > twoHoursAgo;
     
-    if (isAddressQuery) {
-      const state = await this.loadState(providerId, clientPhone);
-      const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+    if (isWithinPostBookingWindow) {
+      // Strict address keyword detection (case-insensitive, must contain exact keyword)
+      const isAddressQuery = this.isAddressQuery(content);
       
-      if (state.lastBookingAt && state.lastBookingAt > twoHoursAgo) {
+      if (isAddressQuery) {
+        // User is asking for the address - respond
         let addressResponse: string;
         if (state.lastBookingAddress && state.lastBookingAddress.trim()) {
           addressResponse = `c'est ici: ${state.lastBookingAddress}. google maps. sois a l'heure.`;
@@ -418,12 +420,55 @@ class WhatsAppManager {
           addressResponse = `adresse pas configuree dans mon dashboard. jte l'envoi des que possible.`;
         }
         await this.sendMessage(providerId, clientPhone, addressResponse);
+        console.log("[WA] Post-booking address reply sent");
+        return;
+      } else {
+        // Any other message (merci, ok, à toute, etc.) - silent ignore
+        console.log("[WA] Post-booking silent gate active, skipping LLM");
         return;
       }
     }
 
     const response = await this.generateAIResponse(providerId, clientPhone, content, profile, slotId);
     await this.sendMessage(providerId, clientPhone, response);
+  }
+
+  private isAddressQuery(content: string): boolean {
+    // Strict address keyword detection with word boundaries to avoid false positives
+    // Multi-word phrases checked first (exact match), then single words with word boundary regex
+    const multiWordPhrases = [
+      "c'est où", "c'est ou", "cest ou", "cest où",
+      "t'es où", "t'es ou", "tes ou", "tes où",
+      "comment venir", "google maps"
+    ];
+    
+    // Check multi-word phrases first (these are specific enough)
+    if (multiWordPhrases.some(phrase => content.includes(phrase))) {
+      return true;
+    }
+    
+    // Single words require word boundary matching to avoid false positives
+    // (e.g., "ou" in "journée" or "ouvres" should NOT match)
+    const wordBoundaryKeywords = [
+      "adresse", "addr", "maps", "localisation"
+    ];
+    
+    for (const kw of wordBoundaryKeywords) {
+      // Word boundary: start of string or non-letter before, and end of string or non-letter after
+      const regex = new RegExp(`(?:^|[^a-zA-Zàâäéèêëïîôûùüç])${kw}(?:[^a-zA-Zàâäéèêëïîôûùüç]|$)`, 'i');
+      if (regex.test(content)) {
+        return true;
+      }
+    }
+    
+    // Special case: standalone "où" or "ou" as a question (very strict)
+    // Only match if the entire message is just "où" or "ou" (with optional punctuation)
+    // This avoids matching "journée", "ouvres", "toute", etc.
+    if (/^o[uù][?!]*$/.test(content.trim())) {
+      return true;
+    }
+    
+    return false;
   }
 
   private isGreeting(content: string): boolean {

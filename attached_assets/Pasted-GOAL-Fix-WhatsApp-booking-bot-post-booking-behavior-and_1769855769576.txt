@@ -1,0 +1,120 @@
+GOAL: Fix WhatsApp booking bot post-booking behavior and reduce unwanted funnel restarts.
+
+CONSTRAINTS:
+
+Do NOT change frontend.
+
+Do NOT refactor unrelated code.
+
+Keep existing DB schema and storage methods.
+
+Keep Europe/Brussels timezone logic unchanged.
+
+Only change server/whatsapp.ts (and minimal helpers if required).
+
+BUGS TO FIX:
+
+After a booking is confirmed, the bot sometimes restarts the funnel (“on est la pour un rdv…”) on subsequent casual messages.
+
+The “post-booking address handler” sometimes replies with the address even when the user did not ask for it (address sent twice).
+
+After booking, the bot should be silent unless user asks for the address.
+
+IMPLEMENTATION TASKS (exact):
+
+A) Add strict post-booking gate (2 hours)
+
+In handleIncomingMessage() or in the earliest possible place before calling generateAIResponse():
+
+Load conversation state from DB (loadState(providerId, clientPhone)), which includes:
+
+lastBookingAt
+
+lastBookingAddress
+
+lastBookingTime
+
+If lastBookingAt exists and is within the last 2 hours:
+
+If the incoming message contains address keywords (see Task B), reply with the stored address (see Task C).
+
+Otherwise, return without calling the LLM and without sending any message (silent).
+
+This prevents any funnel restart for “merci / ok / à toute / bye / …”.
+
+B) Create a strict keyword detector for address requests
+
+Add a helper function (case-insensitive) to detect address intent, e.g.:
+
+Keywords must include at least one of:
+
+adresse
+
+addr
+
+ou
+
+où
+
+maps
+
+google maps
+
+localisation
+
+location
+
+c'est où
+
+t'es où
+
+comment venir
+
+IMPORTANT:
+
+Only trigger on these keywords. No fuzzy logic.
+
+Do not trigger for generic messages like “ok”, “merci”, “à toute”.
+
+C) Address response content
+
+When address keywords are detected AND lastBookingAt is within 2 hours:
+
+If state.lastBookingAddress is a non-empty string:
+
+respond exactly (SMS style):
+c'est ici: ${state.lastBookingAddress}. google maps. sois a l'heure.
+
+Else:
+
+respond exactly:
+adresse pas configuree dans mon dashboard. jte l'envoi des que possible.
+
+D) Ensure no duplicate address send
+
+During the booking confirmation code path (the block that creates the appointment and sends confirmation):
+
+Keep current confirmation message as-is.
+
+Do NOT automatically send the address again after confirmation unless user asks later.
+
+Ensure that any existing “post-booking handler” runs ONLY when keywords match (Task B), never “just because lastBookingAt exists”.
+
+E) Logging (minimal)
+
+Add one log line when the post-booking gate blocks the LLM:
+
+console.log("[WA] Post-booking silent gate active, skipping LLM");
+Add one log line when address handler replies:
+
+console.log("[WA] Post-booking address reply sent");
+
+DELIVERABLE:
+
+After booking, messages like “merci”, “à toute”, “ok” produce no bot reply.
+
+Only messages asking for the address trigger a reply, and only within 2 hours of booking.
+
+No funnel restart after booking.
+
+Code compiles and runs.
