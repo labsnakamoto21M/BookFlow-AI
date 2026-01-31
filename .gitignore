@@ -4,3 +4,6 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# WhatsApp Baileys auth credentials (sensitive)
+auth_info_baileys/

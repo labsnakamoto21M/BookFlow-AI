@@ -12,7 +12,7 @@ import qrcode from "qrcode";
 import { storage } from "./storage";
 import { format, addDays, startOfDay, endOfDay, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
-import { toZonedTime, formatInTimeZone } from "date-fns-tz";
+import { toZonedTime, formatInTimeZone, fromZonedTime } from "date-fns-tz";
 
 const BRUSSELS_TZ = "Europe/Brussels";
 import cron from "node-cron";
@@ -759,17 +759,17 @@ Reponds au dernier message du client.`;
         const hour = parseInt(bookingMatch[2]);
         const minute = parseInt(bookingMatch[3]);
         
-        // Utilisation du timezone Bruxelles pour la création de RDV
-        const nowBrusselsBooking = toZonedTime(new Date(), BRUSSELS_TZ);
-        const appointmentDate = new Date(nowBrusselsBooking);
-        if (isTomorrow) {
-          appointmentDate.setDate(appointmentDate.getDate() + 1);
-        }
-        appointmentDate.setHours(hour, minute, 0, 0);
+        // BRUSSELS TIMEZONE ONLY: Create appointment date using fromZonedTime
+        const nowUtcBooking = new Date();
+        const nowBrusselsBooking = toZonedTime(nowUtcBooking, BRUSSELS_TZ);
+        const targetBrusselsDate = isTomorrow ? addDays(nowBrusselsBooking, 1) : nowBrusselsBooking;
+        const brusselsDateStrBooking = formatInTimeZone(targetBrusselsDate, BRUSSELS_TZ, "yyyy-MM-dd");
+        // Create appointment as UTC Date from Brussels local time
+        const appointmentDate = fromZonedTime(`${brusselsDateStrBooking} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`, BRUSSELS_TZ);
         
         aiResponse = aiResponse.replace(/\[BOOKING:(DEMAIN:)?(\d{1,2}):(\d{2})\]/, "").trim();
         
-        if (appointmentDate <= nowBrusselsBooking) {
+        if (appointmentDate <= nowUtcBooking) {
           aiResponse = "desole ce creneau est deja passe, choisis une autre heure stp";
         } else {
           // FORCE: Récupération du service par défaut si aucun serviceId en session
@@ -795,13 +795,16 @@ Reponds au dernier message du client.`;
           const selectedService = activeServices.find(s => s.id === selectedServiceId) || activeServices[0];
           
           // Validation des créneaux même sans service (serviceId NULLABLE)
-          const targetDate = isTomorrow ? addDays(new Date(), 1) : new Date();
+          // BRUSSELS TIMEZONE ONLY for all date operations
+          const nowForSlots = toZonedTime(new Date(), BRUSSELS_TZ);
+          const targetDate = isTomorrow ? addDays(nowForSlots, 1) : nowForSlots;
           const availableSlots = await this.getAvailableSlots(providerId, targetDate, businessHours, slotId);
-          const requestedTime = format(appointmentDate, "HH:mm");
+          // Format in Brussels timezone to match getAvailableSlots output
+          const requestedTime = formatInTimeZone(appointmentDate, BRUSSELS_TZ, "HH:mm");
           
           if (!availableSlots.includes(requestedTime)) {
             if (availableSlots.length === 0) {
-              const altDate = isTomorrow ? addDays(new Date(), 2) : addDays(new Date(), 1);
+              const altDate = isTomorrow ? addDays(nowForSlots, 2) : addDays(nowForSlots, 1);
               const altSlots = await this.getAvailableSlots(providerId, altDate, businessHours, slotId);
               const altLabel = isTomorrow ? "apres-demain" : "demain";
               if (altSlots.length > 0) {
@@ -833,10 +836,10 @@ Reponds au dernier message du client.`;
                 notes: noteText || "RDV automatique",
               });
                 
-                console.log(`[WA-AI] Created appointment for ${clientPhone} at ${format(appointmentDate, "HH:mm dd/MM")}, slotId=${slotId || "none"}`);
+                console.log(`[WA-AI] Created appointment for ${clientPhone} at ${formatInTimeZone(appointmentDate, BRUSSELS_TZ, "HH:mm dd/MM")}, slotId=${slotId || "none"}`);
                 
                 // MESSAGE DE CONFIRMATION FINALE AVEC ADRESSE GPS (slot address with provider fallback)
-                const bookedTime = format(appointmentDate, "HH:mm");
+                const bookedTime = formatInTimeZone(appointmentDate, BRUSSELS_TZ, "HH:mm");
                 const resolvedAddress = effectiveAddress || null; // NO "mon adresse" fallback
                 
                 // Forcer le message de confirmation (remplace la réponse IA)
@@ -1195,7 +1198,8 @@ Reponds au dernier message du client.`;
   }
 
   private async generateAvailableSlots(providerId: string, clientPhone: string, services: any[], businessHours: any[]): Promise<string> {
-    const today = new Date();
+    // BRUSSELS TIMEZONE ONLY for all date operations
+    const today = toZonedTime(new Date(), BRUSSELS_TZ);
     const tomorrow = addDays(today, 1);
 
     const todaySlots = await this.getAvailableSlots(providerId, today, businessHours);
@@ -1229,6 +1233,7 @@ Reponds au dernier message du client.`;
   }
 
   private async getAvailableSlots(providerId: string, date: Date, businessHours: any[], slotId: string | null = null): Promise<string[]> {
+    // BRUSSELS TIMEZONE ONLY: All dates are in Brussels timezone
     const brusselsDate = toZonedTime(date, BRUSSELS_TZ);
     const dayOfWeek = brusselsDate.getDay();
     const dayHours = businessHours.find(h => h.dayOfWeek === dayOfWeek);
@@ -1241,8 +1246,10 @@ Reponds au dernier message du client.`;
     const [openH, openM] = (dayHours.openTime as string).split(":").map(Number);
     const [closeH, closeM] = (dayHours.closeTime as string).split(":").map(Number);
 
-    const startOfDayDate = startOfDay(date);
-    const endOfDayDate = endOfDay(date);
+    // Create Brussels day bounds using fromZonedTime (converts Brussels local time to UTC Date)
+    const brusselsDateStr = formatInTimeZone(date, BRUSSELS_TZ, "yyyy-MM-dd");
+    const startOfDayDate = fromZonedTime(`${brusselsDateStr} 00:00:00`, BRUSSELS_TZ);
+    const endOfDayDate = fromZonedTime(`${brusselsDateStr} 23:59:59`, BRUSSELS_TZ);
 
     const allAppointments = await storage.getAppointments(providerId, startOfDayDate, endOfDayDate);
     // SLOT-AWARE: Filter appointments by slotId if provided
@@ -1251,25 +1258,32 @@ Reponds au dernier message du client.`;
       : allAppointments;
     const blockedSlots = await storage.getBlockedSlots(providerId, startOfDayDate, endOfDayDate);
 
+    // Current time as UTC Date (for comparison)
+    const nowUtc = new Date();
+
     let currentHour = openH;
     let currentMinute = openM;
 
+    // Generate slots in 30-min steps until closeTime (NO hard limit)
     while (currentHour < closeH || (currentHour === closeH && currentMinute < closeM)) {
-      const slotTime = new Date(date);
-      slotTime.setHours(currentHour, currentMinute, 0, 0);
+      // Create slot time using fromZonedTime (Brussels local time → UTC Date)
+      const slotTimeStr = `${brusselsDateStr} ${String(currentHour).padStart(2, "0")}:${String(currentMinute).padStart(2, "0")}:00`;
+      const slotTime = fromZonedTime(slotTimeStr, BRUSSELS_TZ);
 
-      const nowBrussels = toZonedTime(new Date(), BRUSSELS_TZ);
-      if (slotTime > nowBrussels) {
+      // Slot must be strictly in the future (compare UTC dates)
+      if (slotTime > nowUtc) {
         const isBooked = existingAppointments.some(apt => {
           if (apt.status === "cancelled" || apt.status === "no-show") {
             return false;
           }
+          // Appointments are stored as UTC, compare directly
           const aptTime = typeof apt.appointmentDate === "string" 
             ? parseISO(apt.appointmentDate) 
             : apt.appointmentDate;
           const aptDuration = apt.duration || 60;
           const aptEndTime = new Date(aptTime.getTime() + aptDuration * 60 * 1000);
           
+          // Slot overlaps if it falls within appointment window
           return slotTime >= aptTime && slotTime < aptEndTime;
         });
 
@@ -1280,10 +1294,12 @@ Reponds au dernier message du client.`;
         });
 
         if (!isBooked && !isBlocked) {
-          slots.push(format(slotTime, "HH:mm"));
+          // Format in Brussels timezone for display
+          slots.push(formatInTimeZone(slotTime, BRUSSELS_TZ, "HH:mm"));
         }
       }
 
+      // 30-minute steps
       currentMinute += 30;
       if (currentMinute >= 60) {
         currentMinute = 0;
@@ -1291,7 +1307,7 @@ Reponds au dernier message du client.`;
       }
     }
 
-    // Retourne TOUS les créneaux disponibles sans limite
+    // Return ALL available slots (NO hard limit)
     return slots;
   }
 
@@ -1305,14 +1321,12 @@ Reponds au dernier message du client.`;
     const hour = parseInt(timeMatch[1]);
     const minute = parseInt(timeMatch[2] || "0");
 
+    // BRUSSELS TIMEZONE ONLY for all date operations
     const isToday = !content.includes("demain");
-    const appointmentDate = new Date();
-    
-    if (!isToday) {
-      appointmentDate.setDate(appointmentDate.getDate() + 1);
-    }
-    
-    appointmentDate.setHours(hour, minute, 0, 0);
+    const nowBrussels = toZonedTime(new Date(), BRUSSELS_TZ);
+    const brusselsDateStr = formatInTimeZone(isToday ? nowBrussels : addDays(nowBrussels, 1), BRUSSELS_TZ, "yyyy-MM-dd");
+    // Use fromZonedTime to convert Brussels local time to UTC Date
+    const appointmentDate = fromZonedTime(`${brusselsDateStr} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`, BRUSSELS_TZ);
 
     const activeServices = services.filter(s => s.active);
     if (activeServices.length === 0) {
@@ -1334,7 +1348,8 @@ Reponds au dernier message du client.`;
         notes: null,
       });
 
-      const formattedDate = format(appointmentDate, "EEEE d MMMM 'a' HH:mm", { locale: fr });
+      // Format in Brussels timezone
+      const formattedDate = formatInTimeZone(appointmentDate, BRUSSELS_TZ, "EEEE d MMMM 'a' HH:mm", { locale: fr });
       
       return `ok c'est note! rdv ${formattedDate}\n\nje t'envoie un rappel 1h avant\na bientot`;
     } catch (error) {
