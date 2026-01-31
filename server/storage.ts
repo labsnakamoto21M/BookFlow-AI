@@ -72,6 +72,7 @@ export interface IStorage {
   getAppointments(providerId: string, startDate: Date, endDate: Date): Promise<Appointment[]>;
   getAppointment(id: string): Promise<Appointment | undefined>;
   getUpcomingAppointments(providerId: string, limit?: number): Promise<Appointment[]>;
+  getNextClientAppointment(providerId: string, clientPhone: string): Promise<Appointment | undefined>;
   createAppointment(appointment: InsertAppointment): Promise<Appointment>;
   updateAppointment(id: string, updates: Partial<InsertAppointment>): Promise<Appointment | undefined>;
   getAppointmentsNeedingReminder(): Promise<Appointment[]>;
@@ -250,6 +251,18 @@ export class DatabaseStorage implements IStorage {
         eq(appointments.status, "confirmed")
       )
     ).orderBy(appointments.appointmentDate).limit(limit);
+  }
+
+  async getNextClientAppointment(providerId: string, clientPhone: string): Promise<Appointment | undefined> {
+    const [apt] = await db.select().from(appointments).where(
+      and(
+        eq(appointments.providerId, providerId),
+        eq(appointments.clientPhone, clientPhone),
+        gte(appointments.appointmentDate, new Date()),
+        eq(appointments.status, "confirmed")
+      )
+    ).orderBy(appointments.appointmentDate).limit(1);
+    return apt;
   }
 
   async createAppointment(appointment: InsertAppointment): Promise<Appointment> {
