@@ -402,6 +402,26 @@ class WhatsAppManager {
     const session = this.sessions.get(providerId);
     const slotId = session?.slotId || null;
 
+    // POST-BOOKING ADDRESS HANDLER: Answer address queries without restarting funnel
+    const addressKeywords = ["adresse", "ou", "où", "maps", "google", "localisation", "loc", "c'est ou", "cest ou", "address", "where", "location"];
+    const isAddressQuery = addressKeywords.some(kw => content.includes(kw));
+    
+    if (isAddressQuery) {
+      const state = await this.loadState(providerId, clientPhone);
+      const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+      
+      if (state.lastBookingAt && state.lastBookingAt > twoHoursAgo) {
+        let addressResponse: string;
+        if (state.lastBookingAddress && state.lastBookingAddress.trim()) {
+          addressResponse = `c'est ici: ${state.lastBookingAddress}. google maps. sois a l'heure.`;
+        } else {
+          addressResponse = `adresse pas configuree dans mon dashboard. jte l'envoi des que possible.`;
+        }
+        await this.sendMessage(providerId, clientPhone, addressResponse);
+        return;
+      }
+    }
+
     const response = await this.generateAIResponse(providerId, clientPhone, content, profile, slotId);
     await this.sendMessage(providerId, clientPhone, response);
   }
@@ -817,12 +837,16 @@ Reponds au dernier message du client.`;
                 
                 // MESSAGE DE CONFIRMATION FINALE AVEC ADRESSE GPS (slot address with provider fallback)
                 const bookedTime = format(appointmentDate, "HH:mm");
-                const gpsAddress = effectiveAddress || "mon adresse";
+                const resolvedAddress = effectiveAddress || null; // NO "mon adresse" fallback
                 
                 // Forcer le message de confirmation (remplace la réponse IA)
-                aiResponse = `ok c confirmer pour ${bookedTime}. je suis ${gpsAddress}. regarde sur google maps. je tenvoi le num exact 15min avant. sois la.`;
+                if (resolvedAddress) {
+                  aiResponse = `ok c confirmer pour ${bookedTime}. je suis ${resolvedAddress}. regarde sur google maps. je tenvoi le num exact 15min avant. sois la.`;
+                } else {
+                  aiResponse = `ok c confirmer pour ${bookedTime}. adresse pas configuree dans mon dashboard. jte l'envoi des que possible. sois a l'heure.`;
+                }
                 
-                // Reset conversation state after booking (DB SINGLE SOURCE OF TRUTH)
+                // Reset conversation state after booking BUT preserve lastBooking info (DB SINGLE SOURCE OF TRUTH)
                 try {
                   convState = await this.persistState(providerId, clientPhone, {
                     ...convState,
@@ -832,6 +856,10 @@ Reponds au dernier message du client.`;
                     extras: [],
                     extrasTotal: 0,
                     slotMapping: {},
+                    lastBookingAt: Date.now(),
+                    lastBookingAddress: resolvedAddress,
+                    lastBookingSlotId: slotId || null,
+                    lastBookingTime: bookedTime,
                   });
                 } catch (dbError) {
                   console.error("[WA-STATE] Failed to persist reset state:", dbError);
@@ -1233,7 +1261,7 @@ Reponds au dernier message du client.`;
       const nowBrussels = toZonedTime(new Date(), BRUSSELS_TZ);
       if (slotTime > nowBrussels) {
         const isBooked = existingAppointments.some(apt => {
-          if (apt.status === "cancelled" || apt.status === "no_show") {
+          if (apt.status === "cancelled" || apt.status === "no-show") {
             return false;
           }
           const aptTime = typeof apt.appointmentDate === "string" 
