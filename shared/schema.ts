@@ -222,6 +222,8 @@ export const conversationSessions = pgTable("conversation_sessions", {
   lastBookingAddress: text("last_booking_address"), // address used in last booking confirmation
   lastBookingSlotId: varchar("last_booking_slot_id"), // slotId of last booking
   lastBookingTime: text("last_booking_time"), // HH:mm of last booking
+  lastBookingDateStr: text("last_booking_date_str"), // "demain 17:00" for post-booking responses
+  offTopicCount: integer("off_topic_count").default(0), // Progressive guardrail counter
   lastUpdate: timestamp("last_update").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [

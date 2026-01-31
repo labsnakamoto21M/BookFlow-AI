@@ -69,6 +69,8 @@ interface ConversationState {
   lastBookingAddress: string | null; // address used in confirmation
   lastBookingSlotId: string | null;
   lastBookingTime: string | null; // HH:mm
+  lastBookingDateStr: string | null; // "demain 17:00" for post-booking responses
+  offTopicCount: number; // Progressive guardrail counter
 }
 
 const logger = pino({ level: "silent" });
@@ -100,6 +102,8 @@ class WhatsAppManager {
           lastBookingAddress: dbSession?.lastBookingAddress || null,
           lastBookingSlotId: dbSession?.lastBookingSlotId || null,
           lastBookingTime: dbSession?.lastBookingTime || null,
+          lastBookingDateStr: (dbSession as any)?.lastBookingDateStr || null,
+          offTopicCount: 0,
         };
         return newState;
       }
@@ -120,6 +124,8 @@ class WhatsAppManager {
         lastBookingAddress: dbSession.lastBookingAddress || null,
         lastBookingSlotId: dbSession.lastBookingSlotId || null,
         lastBookingTime: dbSession.lastBookingTime || null,
+        lastBookingDateStr: (dbSession as any)?.lastBookingDateStr || null,
+        offTopicCount: (dbSession as any)?.offTopicCount || 0,
       };
     } catch (error) {
       console.error("[WA-STATE] Failed to load state from DB:", error);
@@ -139,6 +145,8 @@ class WhatsAppManager {
         lastBookingAddress: null,
         lastBookingSlotId: null,
         lastBookingTime: null,
+        lastBookingDateStr: null,
+        offTopicCount: 0,
       };
     }
   }
@@ -163,6 +171,8 @@ class WhatsAppManager {
       lastBookingAddress: updatedState.lastBookingAddress,
       lastBookingSlotId: updatedState.lastBookingSlotId,
       lastBookingTime: updatedState.lastBookingTime,
+      lastBookingDateStr: updatedState.lastBookingDateStr,
+      offTopicCount: updatedState.offTopicCount,
     });
     return updatedState;
   }
@@ -402,31 +412,23 @@ class WhatsAppManager {
     const session = this.sessions.get(providerId);
     const slotId = session?.slotId || null;
 
-    // POST-BOOKING GATE: Block funnel restarts within 2 hours of booking
+    // POST-BOOKING GATE: Handle messages within 2 hours of booking differently
     const state = await this.loadState(providerId, clientPhone);
     const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
     const isWithinPostBookingWindow = state.lastBookingAt && state.lastBookingAt > twoHoursAgo;
     
     if (isWithinPostBookingWindow) {
-      // Strict address keyword detection (case-insensitive, must contain exact keyword)
-      const isAddressQuery = this.isAddressQuery(content);
-      
-      if (isAddressQuery) {
-        // User is asking for the address - respond
-        let addressResponse: string;
-        if (state.lastBookingAddress && state.lastBookingAddress.trim()) {
-          addressResponse = `c'est ici: ${state.lastBookingAddress}. google maps. sois a l'heure.`;
-        } else {
-          addressResponse = `adresse pas configuree dans mon dashboard. jte l'envoi des que possible.`;
-        }
-        await this.sendMessage(providerId, clientPhone, addressResponse);
-        console.log("[WA] Post-booking address reply sent");
-        return;
-      } else {
-        // Any other message (merci, ok, à toute, etc.) - silent ignore
-        console.log("[WA] Post-booking silent gate active, skipping LLM");
-        return;
-      }
+      // POST-BOOKING MODE: Bot keeps responding, no more silence
+      const postBookingResponse = await this.handlePostBookingMessage(
+        providerId, 
+        clientPhone, 
+        content, 
+        state,
+        profile
+      );
+      await this.sendMessage(providerId, clientPhone, postBookingResponse);
+      console.log("[WA] Post-booking response sent");
+      return;
     }
 
     const response = await this.generateAIResponse(providerId, clientPhone, content, profile, slotId);
@@ -469,6 +471,122 @@ class WhatsAppManager {
     }
     
     return false;
+  }
+
+  // POST-BOOKING MODE: Respond to messages after a booking is confirmed
+  private async handlePostBookingMessage(
+    providerId: string,
+    clientPhone: string,
+    content: string,
+    state: ConversationState,
+    profile: any
+  ): Promise<string> {
+    const lowerContent = content.toLowerCase().trim();
+    const bookingTime = state.lastBookingTime || "ton rdv";
+    const bookingDateStr = state.lastBookingDateStr || "";
+    const displayTime = bookingDateStr || bookingTime;
+    
+    // Check if it's a time/schedule query about their booking
+    const isTimeQuery = /ce soir|aujourd|maintenant|quelle heure|a quelle h|cest quand|quand/.test(lowerContent);
+    if (isTimeQuery) {
+      return `ton rdv est ${displayTime}. sois a l'heure.`;
+    }
+    
+    // Check if asking for address
+    if (this.isAddressQuery(content)) {
+      // Calculate time until appointment for T-15 rule
+      if (state.lastBookingAt) {
+        const nowUtc = new Date();
+        const weekFromNow = addDays(nowUtc, 7);
+        // Try to find the actual appointment
+        const appointments = await storage.getAppointments(providerId, nowUtc, weekFromNow);
+        const clientAppointment = appointments.find(
+          apt => normalizePhone(apt.clientPhone) === normalizePhone(clientPhone) && 
+                 apt.status === "confirmed" &&
+                 new Date(apt.appointmentDate) > nowUtc
+        );
+        
+        if (clientAppointment) {
+          const aptTime = new Date(clientAppointment.appointmentDate);
+          const minutesUntil = (aptTime.getTime() - nowUtc.getTime()) / (1000 * 60);
+          
+          if (minutesUntil <= 15) {
+            // T-15: Give full address
+            if (state.lastBookingAddress && state.lastBookingAddress.trim()) {
+              return `c'est ici: ${state.lastBookingAddress}. google maps. arrive maintenant.`;
+            } else {
+              return `adresse pas configuree. jte l'envoi des que possible.`;
+            }
+          } else {
+            // Before T-15: Only street info or timing explanation
+            if (state.lastBookingAddress && state.lastBookingAddress.trim()) {
+              // Extract just street name if possible
+              const streetMatch = state.lastBookingAddress.match(/^[^,\d]+/);
+              const streetOnly = streetMatch ? streetMatch[0].trim() : "le quartier";
+              return `je suis vers ${streetOnly}. le num exact je tenvoi 15min avant. sois a l'heure.`;
+            } else {
+              return `je tenvoi l'adresse 15min avant le rdv. sois pret a l'heure.`;
+            }
+          }
+        }
+      }
+      // Fallback if no appointment found
+      if (state.lastBookingAddress && state.lastBookingAddress.trim()) {
+        return `c'est ici: ${state.lastBookingAddress}. google maps.`;
+      } else {
+        return `je tenvoi l'adresse 15min avant le rdv.`;
+      }
+    }
+    
+    // Check if trying to book again (FORBIDDEN in post-booking mode)
+    const isNewBookingAttempt = /rdv|reserver|reservation|dispo|creneau|autre heure/.test(lowerContent);
+    if (isNewBookingAttempt) {
+      return `tu as deja un rdv ${displayTime}. viens a l'heure. si tu veux annuler dis le clairement.`;
+    }
+    
+    // Reassurance messages (allo, ok, merci, etc.)
+    const isReassurance = /^(ok|oui|d'?accord|dac|merci|mrc|a toute|a \+|allo|hello|hey|cc|coucou|slt|yo|wsh)/.test(lowerContent);
+    if (isReassurance) {
+      const reassurances = [
+        `j'ai bien recu. ton rdv est ${displayTime}. a toute.`,
+        `c'est note. rdv ${displayTime}. sois a l'heure.`,
+        `ok parfait. on se voit ${displayTime}.`,
+      ];
+      return reassurances[Math.floor(Math.random() * reassurances.length)];
+    }
+    
+    // Cancel request detection
+    const isCancelRequest = /annuler|cancel|annulation|plus venir|peux pas/.test(lowerContent);
+    if (isCancelRequest) {
+      return `tu veux annuler ton rdv de ${displayTime}? reponds "oui annuler" pour confirmer.`;
+    }
+    
+    // Explicit cancel confirmation
+    if (/oui annuler/.test(lowerContent)) {
+      // Find and cancel the appointment
+      const nowUtc = new Date();
+      const weekFromNow = addDays(nowUtc, 7);
+      const appointments = await storage.getAppointments(providerId, nowUtc, weekFromNow);
+      const clientAppointment = appointments.find(
+        apt => normalizePhone(apt.clientPhone) === normalizePhone(clientPhone) && 
+               apt.status === "confirmed"
+      );
+      if (clientAppointment) {
+        await storage.updateAppointment(clientAppointment.id, { status: "cancelled" });
+        // Clear the post-booking state
+        await this.persistState(providerId, clientPhone, {
+          ...state,
+          lastBookingAt: null,
+          lastBookingTime: null,
+          lastBookingDateStr: null,
+          lastBookingAddress: null,
+        });
+        return `rdv annule. a la prochaine.`;
+      }
+    }
+    
+    // Default: Acknowledge their booking is confirmed
+    return `j'ai bien recu ton message. ton rdv est confirme ${displayTime}. sois a l'heure.`;
   }
 
   private isGreeting(content: string): boolean {
