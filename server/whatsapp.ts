@@ -65,6 +65,10 @@ interface ConversationState {
   serviceId: string | null;
   slotMapping: Record<number, string>; // {1: "09:00", 2: "09:30", ...}
   detectedLanguage: string; // fr, en, es, nl, de, etc.
+  lastBookingAt: number | null; // timestamp of last booking
+  lastBookingAddress: string | null; // address used in confirmation
+  lastBookingSlotId: string | null;
+  lastBookingTime: string | null; // HH:mm
 }
 
 const logger = pino({ level: "silent" });
@@ -79,6 +83,7 @@ class WhatsAppManager {
       const dbSession = await storage.getConversationSession(providerId, clientPhone);
       
       // Si pas de session ou session expirée (30 min), créer une nouvelle
+      // BUT preserve lastBooking fields even after session expires (for post-booking address queries)
       if (!dbSession || (dbSession.lastUpdate && Date.now() - new Date(dbSession.lastUpdate).getTime() > 30 * 60 * 1000)) {
         const newState: ConversationState = {
           type: null,
@@ -91,6 +96,10 @@ class WhatsAppManager {
           serviceId: null,
           slotMapping: {},
           detectedLanguage: "fr",
+          lastBookingAt: dbSession?.lastBookingAt ? new Date(dbSession.lastBookingAt).getTime() : null,
+          lastBookingAddress: dbSession?.lastBookingAddress || null,
+          lastBookingSlotId: dbSession?.lastBookingSlotId || null,
+          lastBookingTime: dbSession?.lastBookingTime || null,
         };
         return newState;
       }
@@ -107,6 +116,10 @@ class WhatsAppManager {
         serviceId: dbSession.serviceId,
         slotMapping: (dbSession.slotMapping as Record<number, string>) || {},
         detectedLanguage: dbSession.detectedLanguage || "fr",
+        lastBookingAt: dbSession.lastBookingAt ? new Date(dbSession.lastBookingAt).getTime() : null,
+        lastBookingAddress: dbSession.lastBookingAddress || null,
+        lastBookingSlotId: dbSession.lastBookingSlotId || null,
+        lastBookingTime: dbSession.lastBookingTime || null,
       };
     } catch (error) {
       console.error("[WA-STATE] Failed to load state from DB:", error);
@@ -122,6 +135,10 @@ class WhatsAppManager {
         serviceId: null,
         slotMapping: {},
         detectedLanguage: "fr",
+        lastBookingAt: null,
+        lastBookingAddress: null,
+        lastBookingSlotId: null,
+        lastBookingTime: null,
       };
     }
   }
@@ -142,6 +159,10 @@ class WhatsAppManager {
       slotMapping: updatedState.slotMapping,
       detectedLanguage: updatedState.detectedLanguage,
       lastUpdate: new Date(),
+      lastBookingAt: updatedState.lastBookingAt ? new Date(updatedState.lastBookingAt) : null,
+      lastBookingAddress: updatedState.lastBookingAddress,
+      lastBookingSlotId: updatedState.lastBookingSlotId,
+      lastBookingTime: updatedState.lastBookingTime,
     });
     return updatedState;
   }

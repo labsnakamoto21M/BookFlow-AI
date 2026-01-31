@@ -1,0 +1,132 @@
+GOAL: Fix post-booking “address repeat” bug + remove unsafe fallback address. After a booking confirmation, if the client asks the address again, the bot must answer with the confirmed slot address (or provider address if slot missing), instead of restarting the funnel (“on est la pour un rdv…”).
+
+CONSTRAINTS:
+
+Do NOT change frontend.
+
+Minimal changes, no refactor unrelated code.
+
+Keep slot-aware behavior already implemented (session.slotId resolved on connect).
+
+Brussels timezone remains Europe/Brussels.
+
+Do NOT invent addresses. If no address configured, respond clearly “adresse non configurée dans le tableau de bord”.
+
+TASK 1 — Remove "mon adresse" fallback everywhere (critical)
+
+Search in backend code for any fallback like:
+
+profile.address || "mon adresse"
+
+"mon adresse" hardcoded
+
+Replace with:
+
+null / empty string
+
+and handle missing address by returning a message to the client:
+"adresse pas configuree. dis moi ton numero et je te l'envoie des que possible"
+(or similar, short SMS style)
+
+Rule: The confirmation message must never contain "mon adresse".
+
+TASK 2 — Persist “last booking” info in DB conversation session
+
+In WhatsApp conversation state (ConversationState) add fields:
+
+lastBookingAt: number | null
+
+lastBookingAddress: string | null
+
+lastBookingSlotId: string | null
+
+lastBookingTime: string | null (e.g. "17:30")
+
+lastBookingDay: "today" | "tomorrow" | null (optional)
+
+Update DB persistence:
+
+Ensure conversationSessions table/schema supports these fields (JSON or columns).
+If the table already has JSON fields, store them in a new JSON property.
+
+Update loadState() and persistState() to roundtrip these fields.
+
+When a booking is successfully created (inside [BOOKING:...] handling), compute the final address used for confirmation:
+
+If session.slotId exists and slot.address exists -> use slot.address
+
+else if provider profile has address -> use profile.address
+
+else -> null
+
+Then persist:
+
+lastBookingAt = Date.now()
+
+lastBookingAddress = resolvedAddress or null
+
+lastBookingSlotId = session.slotId or null
+
+lastBookingTime = bookedTime ("HH:mm")
+
+lastBookingDay = today/tomorrow if you can infer it
+
+Do NOT clear these fields when you reset the rest of the state after booking.
+
+TASK 3 — Add a “post-booking address handler” BEFORE calling the LLM
+
+In handleIncomingMessage(...), after you compute content and before generateAIResponse(...), add:
+
+Load state from DB: const state = await loadState(providerId, clientPhone)
+
+Detect address/map question keywords:
+
+FR: ["adresse","ou","où","maps","google","localisation","loc","c'est ou","cest ou"]
+
+EN: ["address","where","maps","location"]
+(keep simple; your bot is SMS style)
+
+If:
+
+state.lastBookingAt exists AND Date.now() - state.lastBookingAt < 2 * 60 * 60 * 1000
+
+AND message matches address keywords
+Then reply immediately WITHOUT LLM:
+
+If state.lastBookingAddress exists and not empty:
+
+"c'est ici: ${state.lastBookingAddress}. google maps. sois a l'heure."
+
+Else:
+
+"adresse pas configuree dans mon dashboard. jte l'envoi des que possible."
+
+Return after sending this message (do not call generateAIResponse).
+
+This must work even if the general funnel state was reset after booking.
+
+TASK 4 — Ensure slotId is used consistently in the booking and availability checks
+
+You already made it slot-aware, but verify:
+
+When fetching existing appointments for availability, filter by slotId if present.
+
+When creating appointment, include slotId: session.slotId || null (don’t drop it).
+
+Ensure the status check uses the same values everywhere ("no-show" vs "no_show"):
+
+Normalize to "no-show" (your routes use "no-show" in stats).
+
+Fix any code that checks "no_show".
+
+DELIVERABLE / VERIFICATION
+
+Provide a short test plan and verify with logs:
+
+Book a slot time -> confirmation contains the real configured slot address (never “mon adresse”).
+
+Immediately ask “c’est quel adresse ?” -> bot replies with the same address without restarting funnel.
+
+If slot address is empty and provider address empty -> bot replies “adresse pas configuree…” (no fake address).
+
+Restart server -> the post-booking address answer still works (proves DB persistence).

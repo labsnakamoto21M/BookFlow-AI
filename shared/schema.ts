@@ -218,6 +218,10 @@ export const conversationSessions = pgTable("conversation_sessions", {
   chatHistory: jsonb("chat_history").default([]), // array of {role, content}
   slotMapping: jsonb("slot_mapping").default({}), // {1: "09:00", 2: "09:30", ...} for numbered slot selection
   detectedLanguage: text("detected_language").default("fr"), // detected client language
+  lastBookingAt: timestamp("last_booking_at"), // timestamp of last successful booking
+  lastBookingAddress: text("last_booking_address"), // address used in last booking confirmation
+  lastBookingSlotId: varchar("last_booking_slot_id"), // slotId of last booking
+  lastBookingTime: text("last_booking_time"), // HH:mm of last booking
   lastUpdate: timestamp("last_update").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
