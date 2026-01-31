@@ -377,7 +377,11 @@ class WhatsAppManager {
 
     await storage.isBlacklisted(clientPhone);
 
-    const response = await this.generateAIResponse(providerId, clientPhone, content, profile);
+    // SLOT-AWARE: Get slotId from session
+    const session = this.sessions.get(providerId);
+    const slotId = session?.slotId || null;
+
+    const response = await this.generateAIResponse(providerId, clientPhone, content, profile, slotId);
     await this.sendMessage(providerId, clientPhone, response);
   }
 
@@ -494,12 +498,22 @@ class WhatsAppManager {
     providerId: string,
     clientPhone: string,
     userMessage: string,
-    profile: any
+    profile: any,
+    slotId: string | null = null
   ): Promise<string> {
     // DB SINGLE SOURCE OF TRUTH: Load state from database
     let convState = await this.loadState(providerId, clientPhone);
     
+    // SLOT-AWARE: Fetch slot data for customInstructions/address with provider fallback
+    let slot: any = null;
+    if (slotId) {
+      slot = await storage.getSlot(slotId);
+    }
+    const effectiveCustomInstructions = slot?.customInstructions || profile.customInstructions || null;
+    const effectiveAddress = slot?.address || profile.address || null;
+    
     // SYNCHRONISATION TEMPS RÉEL: Récupération FRAÎCHE des données à chaque message
+    // TODO: Future enhancement - filter basePrices/businessHours by slotId when slot-specific pricing is configured
     const basePrices = await storage.getBasePrices(providerId);
     const serviceExtras = await storage.getServiceExtras(providerId);
     const customExtras = await storage.getCustomExtras(providerId);
@@ -574,8 +588,9 @@ class WhatsAppManager {
       }
     }
     
-    const customInstructions = profile.customInstructions || "";
-    const providerName = profile.businessName || "la prestataire";
+    // SLOT-AWARE: Use effective custom instructions (slot > provider > empty)
+    const customInstructions = effectiveCustomInstructions || "";
+    const providerName = slot?.name || profile.businessName || "la prestataire";
     
     // GRILLE TARIFAIRE UNIFIÉE (base + extras fusionnés)
     const fullPriceList = this.getFormattedPriceList(activePrices, activeExtras, activeCustom);
@@ -775,11 +790,11 @@ Reponds au dernier message du client.`;
                 notes: noteText || "RDV automatique",
               });
                 
-                console.log(`[WA-AI] Created appointment for ${clientPhone} at ${format(appointmentDate, "HH:mm dd/MM")}`);
+                console.log(`[WA-AI] Created appointment for ${clientPhone} at ${format(appointmentDate, "HH:mm dd/MM")}, slotId=${slotId || "none"}`);
                 
-                // MESSAGE DE CONFIRMATION FINALE AVEC ADRESSE GPS
+                // MESSAGE DE CONFIRMATION FINALE AVEC ADRESSE GPS (slot address with provider fallback)
                 const bookedTime = format(appointmentDate, "HH:mm");
-                const gpsAddress = profile.address || "mon adresse";
+                const gpsAddress = effectiveAddress || "mon adresse";
                 
                 // Forcer le message de confirmation (remplace la réponse IA)
                 aiResponse = `ok c confirmer pour ${bookedTime}. je suis ${gpsAddress}. regarde sur google maps. je tenvoi le num exact 15min avant. sois la.`;
