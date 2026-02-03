@@ -33,8 +33,10 @@ import {
   X,
   Ban,
   MessageCircle,
-  Copy
+  Copy,
+  Users
 } from "lucide-react";
+import { Link } from "wouter";
 import { SiWhatsapp } from "react-icons/si";
 import { 
   format, 
@@ -231,6 +233,27 @@ export default function AgendaPage() {
   };
 
   const isLoading = appointmentsLoading || blockedLoading;
+
+  // Empty state when no slots exist
+  if (slots && slots.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4" data-testid="empty-slots-state">
+        <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
+          <Users className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <h2 className="text-xl font-semibold">Aucun slot configuré</h2>
+        <p className="text-muted-foreground text-center max-w-md">
+          Vous devez d'abord créer un slot pour gérer votre agenda et recevoir des rendez-vous.
+        </p>
+        <Link href="/team">
+          <Button data-testid="button-go-to-team">
+            <Plus className="h-4 w-4 mr-2" />
+            Créer un slot
+          </Button>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
