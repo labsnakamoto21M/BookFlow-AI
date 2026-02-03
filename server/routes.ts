@@ -194,9 +194,11 @@ export async function registerRoutes(
   app.get("/api/base-prices", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const prices = await storage.getBasePrices(profile.id);
+      const slotId = await getActiveSlotId(req, profile.id);
+      const prices = await storage.getBasePrices(profile.id, slotId);
       res.json(prices);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error fetching base prices:", error);
       res.status(500).json({ message: "Failed to fetch base prices" });
     }
@@ -205,6 +207,7 @@ export async function registerRoutes(
   app.put("/api/base-prices", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const { prices } = req.body;
       
       const results = [];
@@ -212,12 +215,14 @@ export async function registerRoutes(
         const result = await storage.upsertBasePrice({
           ...price,
           providerId: profile.id,
+          slotId,
         });
         results.push(result);
       }
       
       res.json(results);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error updating base prices:", error);
       res.status(500).json({ message: "Failed to update base prices" });
     }
@@ -370,11 +375,13 @@ export async function registerRoutes(
   app.get("/api/service-extras", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      // Initialize default extras if none exist
-      await storage.initializeDefaultExtras(profile.id);
-      const extras = await storage.getServiceExtras(profile.id);
+      const slotId = await getActiveSlotId(req, profile.id);
+      // Initialize default extras if none exist for this slot
+      await storage.initializeDefaultExtras(profile.id, slotId);
+      const extras = await storage.getServiceExtras(profile.id, slotId);
       res.json(extras);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error fetching service extras:", error);
       res.status(500).json({ message: "Failed to fetch service extras" });
     }
@@ -383,6 +390,7 @@ export async function registerRoutes(
   app.put("/api/service-extras", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const { extras } = req.body;
       
       const results = [];
@@ -390,24 +398,28 @@ export async function registerRoutes(
         const result = await storage.upsertServiceExtra({
           ...extra,
           providerId: profile.id,
+          slotId,
         });
         results.push(result);
       }
       
       res.json(results);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error updating service extras:", error);
       res.status(500).json({ message: "Failed to update service extras" });
     }
   });
 
-  // Custom Extras (user-defined)
+  // Custom Extras (user-defined, slot-scoped)
   app.get("/api/custom-extras", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const extras = await storage.getCustomExtras(profile.id);
+      const slotId = await getActiveSlotId(req, profile.id);
+      const extras = await storage.getCustomExtras(profile.id, slotId);
       res.json(extras);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error fetching custom extras:", error);
       res.status(500).json({ message: "Failed to fetch custom extras" });
     }
@@ -416,12 +428,15 @@ export async function registerRoutes(
   app.post("/api/custom-extras", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const extra = await storage.createCustomExtra({
         ...req.body,
         providerId: profile.id,
+        slotId,
       });
       res.status(201).json(extra);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error creating custom extra:", error);
       res.status(500).json({ message: "Failed to create custom extra" });
     }
@@ -429,13 +444,26 @@ export async function registerRoutes(
 
   app.patch("/api/custom-extras/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const { id } = req.params;
-      const updated = await storage.updateCustomExtra(id, req.body);
-      if (!updated) {
+      
+      // Validate ownership + slot isolation
+      const existing = await storage.getCustomExtra(id);
+      if (!existing) {
         return res.status(404).json({ message: "Custom extra not found" });
       }
+      if (existing.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      if (existing.slotId !== slotId) {
+        return res.status(403).json({ message: "Cannot modify extra from another slot" });
+      }
+      
+      const updated = await storage.updateCustomExtra(id, req.body);
       res.json(updated);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error updating custom extra:", error);
       res.status(500).json({ message: "Failed to update custom extra" });
     }
@@ -443,22 +471,40 @@ export async function registerRoutes(
 
   app.delete("/api/custom-extras/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const { id } = req.params;
+      
+      // Validate ownership + slot isolation
+      const existing = await storage.getCustomExtra(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Custom extra not found" });
+      }
+      if (existing.providerId !== profile.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      if (existing.slotId !== slotId) {
+        return res.status(403).json({ message: "Cannot delete extra from another slot" });
+      }
+      
       await storage.deleteCustomExtra(id);
       res.status(204).send();
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error deleting custom extra:", error);
       res.status(500).json({ message: "Failed to delete custom extra" });
     }
   });
 
-  // Business Hours
+  // Business Hours (slot-scoped)
   app.get("/api/business-hours", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const hours = await storage.getBusinessHours(profile.id);
+      const slotId = await getActiveSlotId(req, profile.id);
+      const hours = await storage.getBusinessHours(profile.id, slotId);
       res.json(hours);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error fetching business hours:", error);
       res.status(500).json({ message: "Failed to fetch business hours" });
     }
@@ -467,25 +513,29 @@ export async function registerRoutes(
   app.put("/api/business-hours", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const { hours } = req.body;
       
-      const hoursWithProvider = hours.map((h: any) => ({
+      const hoursWithSlot = hours.map((h: any) => ({
         ...h,
         providerId: profile.id,
+        slotId,
       }));
 
-      const result = await storage.upsertBusinessHours(hoursWithProvider);
+      const result = await storage.upsertBusinessHours(hoursWithSlot);
       res.json(result);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error updating business hours:", error);
       res.status(500).json({ message: "Failed to update business hours" });
     }
   });
 
-  // Appointments
+  // Appointments (slot-scoped)
   app.get("/api/appointments", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       
       // Use Brussels timezone for date boundaries
       let startDate: Date;
@@ -505,7 +555,7 @@ export async function registerRoutes(
         endDate = endOfWeek(now, { weekStartsOn: 1 });
       }
 
-      const appointments = await storage.getAppointments(profile.id, startDate, endDate);
+      const appointments = await storage.getAppointments(profile.id, startDate, endDate, slotId);
       
       // Get services for each appointment (LEFT JOIN behavior - serviceId can be null)
       const services = await storage.getServices(profile.id);
@@ -517,7 +567,8 @@ export async function registerRoutes(
       }));
 
       res.json(appointmentsWithService);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error fetching appointments:", error);
       res.status(500).json({ message: "Failed to fetch appointments" });
     }
@@ -526,7 +577,8 @@ export async function registerRoutes(
   app.get("/api/appointments/upcoming", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const appointments = await storage.getUpcomingAppointments(profile.id);
+      const slotId = await getActiveSlotId(req, profile.id);
+      const appointments = await storage.getUpcomingAppointments(profile.id, slotId);
       
       const services = await storage.getServices(profile.id);
       const serviceMap = new Map(services.map(s => [s.id, s]));
@@ -537,21 +589,23 @@ export async function registerRoutes(
       }));
 
       res.json(appointmentsWithService);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error fetching upcoming appointments:", error);
       res.status(500).json({ message: "Failed to fetch appointments" });
     }
   });
 
-  // Next 24h appointments endpoint
+  // Next 24h appointments endpoint (slot-scoped)
   app.get("/api/appointments/next24h", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const now = new Date();
       const in24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
       
-      // Get confirmed appointments in the next 24 hours
-      const appointments = await storage.getAppointments(profile.id, now, in24h);
+      // Get confirmed appointments in the next 24 hours for this slot
+      const appointments = await storage.getAppointments(profile.id, now, in24h, slotId);
       const confirmedAppointments = appointments.filter(apt => apt.status === "confirmed");
       
       const services = await storage.getServices(profile.id);
@@ -563,7 +617,8 @@ export async function registerRoutes(
       }));
 
       res.json(appointmentsWithService);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error fetching next 24h appointments:", error);
       res.status(500).json({ message: "Failed to fetch appointments" });
     }
@@ -596,20 +651,31 @@ export async function registerRoutes(
     }
   });
 
-  // Blocked Slots
+  // Blocked Slots (slot-scoped with Brussels timezone)
   app.get("/api/blocked-slots", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const startDate = req.query.start 
-        ? parseISO(req.query.start as string) 
-        : startOfWeek(new Date(), { weekStartsOn: 1 });
-      const endDate = req.query.end 
-        ? parseISO(req.query.end as string) 
-        : endOfWeek(new Date(), { weekStartsOn: 1 });
+      const slotId = await getActiveSlotId(req, profile.id);
+      
+      // Use Brussels timezone for date boundaries (same as appointments)
+      let startDate: Date;
+      let endDate: Date;
+      
+      if (req.query.start && req.query.end) {
+        const startParam = req.query.start as string;
+        const endParam = req.query.end as string;
+        startDate = fromZonedTime(`${startParam} 00:00:00`, BRUSSELS_TZ);
+        endDate = fromZonedTime(`${endParam} 23:59:59`, BRUSSELS_TZ);
+      } else {
+        const now = new Date();
+        startDate = startOfWeek(now, { weekStartsOn: 1 });
+        endDate = endOfWeek(now, { weekStartsOn: 1 });
+      }
 
-      const slots = await storage.getBlockedSlots(profile.id, startDate, endDate);
+      const slots = await storage.getBlockedSlots(profile.id, startDate, endDate, slotId);
       res.json(slots);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error fetching blocked slots:", error);
       res.status(500).json({ message: "Failed to fetch blocked slots" });
     }
@@ -618,10 +684,12 @@ export async function registerRoutes(
   app.post("/api/blocked-slots", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const data = insertBlockedSlotSchema.parse({ ...req.body, providerId: profile.id });
+      const slotId = await getActiveSlotId(req, profile.id);
+      const data = insertBlockedSlotSchema.parse({ ...req.body, providerId: profile.id, slotId });
       const slot = await storage.createBlockedSlot(data);
       res.status(201).json(slot);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error creating blocked slot:", error);
       res.status(500).json({ message: "Failed to create blocked slot" });
     }
@@ -630,20 +698,25 @@ export async function registerRoutes(
   app.delete("/api/blocked-slots/:id", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const { id } = req.params;
-      const slot = await storage.getBlockedSlot(id);
       
-      if (!slot) {
+      const blockedSlot = await storage.getBlockedSlot(id);
+      
+      if (!blockedSlot) {
         return res.status(404).json({ message: "Blocked slot not found" });
       }
-
-      if (slot.providerId !== profile.id) {
+      if (blockedSlot.providerId !== profile.id) {
         return res.status(403).json({ message: "Forbidden" });
+      }
+      if (blockedSlot.slotId !== slotId) {
+        return res.status(403).json({ message: "Cannot delete blocked slot from another slot" });
       }
 
       await storage.deleteBlockedSlot(id);
       res.status(204).send();
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error deleting blocked slot:", error);
       res.status(500).json({ message: "Failed to delete blocked slot" });
     }
