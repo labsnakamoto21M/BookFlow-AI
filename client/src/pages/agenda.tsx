@@ -69,11 +69,11 @@ export default function AgendaPage() {
   const weekEndStr = format(weekEnd, "yyyy-MM-dd");
 
   const { data: appointments, isLoading: appointmentsLoading } = useQuery<AppointmentWithService[]>({
-    queryKey: [`/api/appointments?start=${weekStartStr}&end=${weekEndStr}`],
+    queryKey: ["/api/appointments", { start: weekStartStr, end: weekEndStr }],
   });
 
   const { data: blockedSlots, isLoading: blockedLoading } = useQuery<BlockedSlot[]>({
-    queryKey: [`/api/blocked-slots?start=${weekStartStr}&end=${weekEndStr}`],
+    queryKey: ["/api/blocked-slots", { start: weekStartStr, end: weekEndStr }],
   });
 
   const { data: next24h, isLoading: next24hLoading } = useQuery<AppointmentWithService[]>({
