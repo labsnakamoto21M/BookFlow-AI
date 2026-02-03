@@ -152,10 +152,11 @@ class WhatsAppManager {
   }
 
   // DB ONLY: Persist conversation state to database (awaited, no fire-and-forget)
-  private async persistState(providerId: string, clientPhone: string, state: ConversationState): Promise<ConversationState> {
+  private async persistState(providerId: string, clientPhone: string, state: ConversationState, slotId: string): Promise<ConversationState> {
     const updatedState = { ...state, lastUpdate: Date.now() };
     await storage.upsertConversationSession({
       providerId,
+      slotId, // V1 STRICT: Always require slotId for session persistence
       clientPhone,
       serviceId: updatedState.serviceId,
       sessionType: updatedState.type,
@@ -408,9 +409,13 @@ class WhatsAppManager {
 
     await storage.isBlacklisted(clientPhone);
 
-    // SLOT-AWARE: Get slotId from session
+    // SLOT-AWARE: Get slotId from session (V1 STRICT: must exist)
     const session = this.sessions.get(providerId);
-    const slotId = session?.slotId || null;
+    const slotId = session?.slotId;
+    if (!slotId) {
+      console.error(`[WA] No slotId for provider ${providerId} - cannot process message`);
+      return; // Silent ignore if no slot configured
+    }
 
     // POST-BOOKING GATE: Check if client has a confirmed upcoming appointment
     const state = await this.loadState(providerId, clientPhone);
@@ -418,7 +423,7 @@ class WhatsAppManager {
     
     // Look for next confirmed appointment for this client - no horizon limit
     // Uses dedicated method that queries by clientPhone directly, ordered by date, limit 1
-    const upcomingAppointment = await storage.getNextClientAppointment(providerId, clientPhone);
+    const upcomingAppointment = await storage.getNextClientAppointment(providerId, clientPhone, slotId);
     
     // Post-booking mode if: has upcoming confirmed appointment OR booked within last 2 hours
     const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
@@ -433,6 +438,7 @@ class WhatsAppManager {
         content, 
         state,
         profile,
+        slotId,
         upcomingAppointment
       );
       await this.sendMessage(providerId, clientPhone, postBookingResponse);
@@ -489,6 +495,7 @@ class WhatsAppManager {
     content: string,
     state: ConversationState,
     profile: any,
+    slotId: string,
     upcomingAppointment?: any
   ): Promise<string> {
     const lowerContent = content.toLowerCase().trim();
@@ -588,7 +595,7 @@ class WhatsAppManager {
           lastBookingTime: null,
           lastBookingDateStr: null,
           lastBookingAddress: null,
-        });
+        }, slotId);
         return `rdv annule. a la prochaine.`;
       }
     }
@@ -774,11 +781,15 @@ class WhatsAppManager {
     const effectiveAddress = slot?.address || profile.address || null;
     
     // SYNCHRONISATION TEMPS RÉEL: Récupération FRAÎCHE des données à chaque message
-    // TODO: Future enhancement - filter basePrices/businessHours by slotId when slot-specific pricing is configured
-    const basePrices = await storage.getBasePrices(providerId);
-    const serviceExtras = await storage.getServiceExtras(providerId);
-    const customExtras = await storage.getCustomExtras(providerId);
-    const businessHours = await storage.getBusinessHours(providerId);
+    // V1 STRICT: All storage reads are slot-scoped
+    if (!slotId) {
+      console.error("[WA-AI] slotId required for generateAIResponse");
+      return "desole, erreur technique. reessaie plus tard.";
+    }
+    const basePrices = await storage.getBasePrices(providerId, slotId);
+    const serviceExtras = await storage.getServiceExtras(providerId, slotId);
+    const customExtras = await storage.getCustomExtras(providerId, slotId);
+    const businessHours = await storage.getBusinessHours(providerId, slotId);
     const services = await storage.getServices(providerId);
     
     // Get available slots for deterministic checks
@@ -809,7 +820,7 @@ class WhatsAppManager {
       }
       convState.chatHistory.push({ role: "user", content: userMessage });
       convState.chatHistory.push({ role: "assistant", content: response });
-      await this.persistState(providerId, clientPhone, { ...convState, offTopicCount: 0 });
+      await this.persistState(providerId, clientPhone, { ...convState, offTopicCount: 0 }, slotId);
       return this.censorText(response);
     }
     
@@ -819,7 +830,7 @@ class WhatsAppManager {
       const response = `desole je suis complete pour les prochains jours. recontacte moi plus tard.`;
       convState.chatHistory.push({ role: "user", content: userMessage });
       convState.chatHistory.push({ role: "assistant", content: response });
-      await this.persistState(providerId, clientPhone, { ...convState, offTopicCount: 0 });
+      await this.persistState(providerId, clientPhone, { ...convState, offTopicCount: 0 }, slotId);
       return this.censorText(response);
     }
     
@@ -843,13 +854,13 @@ class WhatsAppManager {
       
       convState.chatHistory.push({ role: "user", content: userMessage });
       convState.chatHistory.push({ role: "assistant", content: response });
-      await this.persistState(providerId, clientPhone, convState);
+      await this.persistState(providerId, clientPhone, convState, slotId);
       return response;
     } else if (isOnTopic) {
       // Reset off-topic counter on relevant messages
       if (convState.offTopicCount > 0) {
         convState.offTopicCount = 0;
-        await this.persistState(providerId, clientPhone, convState);
+        await this.persistState(providerId, clientPhone, convState, slotId);
       }
     }
     
@@ -947,7 +958,7 @@ class WhatsAppManager {
     
     // Persister le slotMapping en base de données (DB SINGLE SOURCE OF TRUTH)
     try {
-      convState = await this.persistState(providerId, clientPhone, { ...convState, slotMapping });
+      convState = await this.persistState(providerId, clientPhone, { ...convState, slotMapping }, slotId);
     } catch (dbError) {
       console.error("[WA-STATE] Failed to persist slotMapping:", dbError);
       return "desole bug interne. reessaie.";
@@ -1085,7 +1096,7 @@ Reponds au dernier message.`;
             const fallbackService = service1h || activeServices[0];
             selectedServiceId = fallbackService.id;
             try {
-              convState = await this.persistState(providerId, clientPhone, { ...convState, serviceId: selectedServiceId });
+              convState = await this.persistState(providerId, clientPhone, { ...convState, serviceId: selectedServiceId }, slotId);
             } catch (dbError) {
               console.error("[WA-STATE] Failed to persist serviceId:", dbError);
               return "desole bug interne. reessaie.";
@@ -1127,7 +1138,7 @@ Reponds au dernier message.`;
               
               await storage.createAppointment({
                 providerId,
-                slotId: slotId || null, // SLOT-AWARE: Link appointment to specific slot
+                slotId, // V1 STRICT: slotId required (non-null guaranteed by guard at line 788)
                 serviceId: selectedService?.id || null, // NULLABLE: plus jamais d'erreur technique
                 clientPhone,
                 clientName: "",
@@ -1168,10 +1179,10 @@ Reponds au dernier message.`;
                     offTopicCount: 0, // Reset off-topic counter after successful booking
                     lastBookingAt: Date.now(),
                     lastBookingAddress: resolvedAddress,
-                    lastBookingSlotId: slotId || null,
+                    lastBookingSlotId: slotId,
                     lastBookingTime: bookedTime,
                     lastBookingDateStr: bookingDateStr,
-                  });
+                  }, slotId);
                 } catch (dbError) {
                   console.error("[WA-STATE] Failed to persist reset state:", dbError);
                 }
@@ -1186,7 +1197,7 @@ Reponds au dernier message.`;
       // Persist chat history (DB SINGLE SOURCE OF TRUTH)
       convState.chatHistory.push({ role: "assistant", content: aiResponse });
       try {
-        await this.persistState(providerId, clientPhone, { ...convState, chatHistory: convState.chatHistory });
+        await this.persistState(providerId, clientPhone, { ...convState, chatHistory: convState.chatHistory }, slotId);
       } catch (dbError) {
         console.error("[WA-STATE] Failed to persist chatHistory:", dbError);
         // Don't return error for chatHistory failure - message still goes through
@@ -1203,10 +1214,10 @@ Reponds au dernier message.`;
     return `cc! je suis dispo pour toi\n\ntape *prix* pour mes tarifs\ntape *rdv* pour prendre rdv`;
   }
 
-  private async generatePriceList(providerId: string): Promise<string> {
-    const basePrices = await storage.getBasePrices(providerId);
-    const serviceExtras = await storage.getServiceExtras(providerId);
-    const customExtras = await storage.getCustomExtras(providerId);
+  private async generatePriceList(providerId: string, slotId: string): Promise<string> {
+    const basePrices = await storage.getBasePrices(providerId, slotId);
+    const serviceExtras = await storage.getServiceExtras(providerId, slotId);
+    const customExtras = await storage.getCustomExtras(providerId, slotId);
     
     const activePrices = basePrices.filter(p => p.active);
     
@@ -1253,8 +1264,8 @@ Reponds au dernier message.`;
     return response;
   }
 
-  private async generateDurationOptions(providerId: string, clientPhone: string, type: "private" | "escort"): Promise<string> {
-    const basePrices = await storage.getBasePrices(providerId);
+  private async generateDurationOptions(providerId: string, clientPhone: string, type: "private" | "escort", slotId: string): Promise<string> {
+    const basePrices = await storage.getBasePrices(providerId, slotId);
     let activePrices = basePrices.filter(p => p.active);
     
     if (type === "escort") {
@@ -1289,8 +1300,8 @@ Reponds au dernier message.`;
     return response;
   }
 
-  private async handleDurationChoice(providerId: string, clientPhone: string, content: string, type: "private" | "escort"): Promise<string> {
-    const basePrices = await storage.getBasePrices(providerId);
+  private async handleDurationChoice(providerId: string, clientPhone: string, content: string, type: "private" | "escort", slotId: string): Promise<string> {
+    const basePrices = await storage.getBasePrices(providerId, slotId);
     let activePrices = basePrices.filter(p => p.active);
     
     if (type === "escort") {
@@ -1339,7 +1350,7 @@ Reponds au dernier message.`;
         ...currentState,
         duration: selectedDuration, 
         basePrice: selectedPrice 
-      });
+      }, slotId);
     } catch (dbError) {
       console.error("[WA-STATE] Failed to persist duration:", dbError);
       return "desole bug interne. reessaie.";
@@ -1388,9 +1399,9 @@ Reponds au dernier message.`;
     return response;
   }
 
-  private async generateExtrasList(providerId: string, clientPhone: string): Promise<string> {
-    const serviceExtras = await storage.getServiceExtras(providerId);
-    const customExtras = await storage.getCustomExtras(providerId);
+  private async generateExtrasList(providerId: string, clientPhone: string, slotId: string): Promise<string> {
+    const serviceExtras = await storage.getServiceExtras(providerId, slotId);
+    const customExtras = await storage.getCustomExtras(providerId, slotId);
     // DB SINGLE SOURCE OF TRUTH: Load state from database
     const state = await this.loadState(providerId, clientPhone);
     
@@ -1423,9 +1434,9 @@ Reponds au dernier message.`;
     return response;
   }
 
-  private async handleExtraSelection(providerId: string, clientPhone: string, selection: string): Promise<string> {
-    const serviceExtras = await storage.getServiceExtras(providerId);
-    const customExtras = await storage.getCustomExtras(providerId);
+  private async handleExtraSelection(providerId: string, clientPhone: string, selection: string, slotId: string): Promise<string> {
+    const serviceExtras = await storage.getServiceExtras(providerId, slotId);
+    const customExtras = await storage.getCustomExtras(providerId, slotId);
     // DB SINGLE SOURCE OF TRUTH: Load state from database
     const state = await this.loadState(providerId, clientPhone);
     
@@ -1467,7 +1478,7 @@ Reponds au dernier message.`;
         ...state,
         extras: newExtras,
         extrasTotal: newExtrasTotal,
-      });
+      }, slotId);
     } catch (dbError) {
       console.error("[WA-STATE] Failed to persist extras:", dbError);
       return "desole bug interne. reessaie.";
@@ -1559,12 +1570,13 @@ Reponds au dernier message.`;
     const startOfDayDate = fromZonedTime(`${brusselsDateStr} 00:00:00`, BRUSSELS_TZ);
     const endOfDayDate = fromZonedTime(`${brusselsDateStr} 23:59:59`, BRUSSELS_TZ);
 
-    const allAppointments = await storage.getAppointments(providerId, startOfDayDate, endOfDayDate);
-    // SLOT-AWARE: Filter appointments by slotId if provided
-    const existingAppointments = slotId 
-      ? allAppointments.filter(apt => apt.slotId === slotId)
-      : allAppointments;
-    const blockedSlots = await storage.getBlockedSlots(providerId, startOfDayDate, endOfDayDate);
+    // V1 STRICT: slotId required for slot-scoped data access
+    if (!slotId) {
+      console.error("[WA] slotId required for getAvailableSlots");
+      return [];
+    }
+    const existingAppointments = await storage.getAppointments(providerId, startOfDayDate, endOfDayDate, slotId);
+    const blockedSlots = await storage.getBlockedSlots(providerId, startOfDayDate, endOfDayDate, slotId);
 
     // Current time as UTC Date (for comparison)
     const nowUtc = new Date();
@@ -1619,7 +1631,7 @@ Reponds au dernier message.`;
     return slots;
   }
 
-  private async handleSlotSelection(providerId: string, clientPhone: string, content: string, services: any[]): Promise<string> {
+  private async handleSlotSelection(providerId: string, clientPhone: string, content: string, services: any[], slotId: string): Promise<string> {
     const timeMatch = content.match(/(\d{1,2})h?(\d{0,2})/);
     
     if (!timeMatch) {
@@ -1646,6 +1658,7 @@ Reponds au dernier message.`;
     try {
       await storage.createAppointment({
         providerId,
+        slotId, // V1 STRICT: slotId required
         serviceId: selectedService.id,
         clientPhone,
         clientName: null,
