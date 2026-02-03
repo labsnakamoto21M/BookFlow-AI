@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { 
@@ -25,7 +32,8 @@ import {
   Calendar,
   X,
   Ban,
-  MessageCircle
+  MessageCircle,
+  Copy
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { 
@@ -40,10 +48,10 @@ import {
   isToday
 } from "date-fns";
 import { fr } from "date-fns/locale";
-import type { Appointment, BlockedSlot, Service } from "@shared/schema";
+import type { Appointment, BlockedSlot, Service, Slot } from "@shared/schema";
 
-const normalizePhoneForWaMe = (phone: string) =>
-  phone.replace(/[^\d]/g, "").replace(/^00/, "");
+const normalizePhoneForWa = (phone: string) =>
+  phone.replace(/[^\d]/g, "");
 
 interface AppointmentWithService extends Appointment {
   service?: Service;
@@ -55,6 +63,7 @@ export default function AgendaPage() {
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentWithService | null>(null);
   const [isBlockDialogOpen, setIsBlockDialogOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [activeSlotId, setActiveSlotId] = useState<string | undefined>(undefined);
   const [blockForm, setBlockForm] = useState({
     startTime: "09:00",
     endTime: "10:00",
@@ -68,16 +77,37 @@ export default function AgendaPage() {
   const weekStartStr = format(weekStart, "yyyy-MM-dd");
   const weekEndStr = format(weekEnd, "yyyy-MM-dd");
 
+  const { data: slots } = useQuery<Slot[]>({
+    queryKey: ["/api/slots"],
+  });
+
+  useEffect(() => {
+    if (slots && slots.length > 0 && !activeSlotId) {
+      const sorted = [...slots].sort((a, b) => {
+        const sortA = a.sortOrder ?? 0;
+        const sortB = b.sortOrder ?? 0;
+        if (sortA !== sortB) return sortA - sortB;
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateA - dateB;
+      });
+      setActiveSlotId(sorted[0].id);
+    }
+  }, [slots, activeSlotId]);
+
   const { data: appointments, isLoading: appointmentsLoading } = useQuery<AppointmentWithService[]>({
-    queryKey: ["/api/appointments", { start: weekStartStr, end: weekEndStr }],
+    queryKey: ["/api/appointments", { start: weekStartStr, end: weekEndStr, slotId: activeSlotId }],
+    enabled: !!activeSlotId,
   });
 
   const { data: blockedSlots, isLoading: blockedLoading } = useQuery<BlockedSlot[]>({
-    queryKey: ["/api/blocked-slots", { start: weekStartStr, end: weekEndStr }],
+    queryKey: ["/api/blocked-slots", { start: weekStartStr, end: weekEndStr, slotId: activeSlotId }],
+    enabled: !!activeSlotId,
   });
 
   const { data: next24h, isLoading: next24hLoading } = useQuery<AppointmentWithService[]>({
-    queryKey: ["/api/appointments/next24h"],
+    queryKey: ["/api/appointments/next24h", { slotId: activeSlotId }],
+    enabled: !!activeSlotId,
   });
 
   const invalidateAppointmentsQueries = () => {
@@ -213,6 +243,27 @@ export default function AgendaPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {slots && slots.length > 1 && (
+            <Select value={activeSlotId} onValueChange={setActiveSlotId} data-testid="select-slot">
+              <SelectTrigger className="w-[180px]" data-testid="select-slot">
+                <SelectValue placeholder="Choisir un slot" />
+              </SelectTrigger>
+              <SelectContent>
+                {[...slots].sort((a, b) => {
+                  const sortA = a.sortOrder ?? 0;
+                  const sortB = b.sortOrder ?? 0;
+                  if (sortA !== sortB) return sortA - sortB;
+                  const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                  const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                  return dateA - dateB;
+                }).map((slot) => (
+                  <SelectItem key={slot.id} value={slot.id}>
+                    {slot.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button
             variant="outline"
             size="icon"
@@ -236,7 +287,7 @@ export default function AgendaPage() {
       </div>
 
       {/* Next 24h Section */}
-      <Card className="mb-4">
+      <Card className="mb-4" data-testid="next24h-container">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg flex items-center gap-2">
             <Clock className="h-5 w-5 text-primary" />
@@ -274,7 +325,7 @@ export default function AgendaPage() {
                       className="gap-1"
                       onClick={(e) => {
                         e.stopPropagation();
-                        window.open(`https://wa.me/${normalizePhoneForWaMe(apt.clientPhone)}`, "_blank");
+                        window.open(`https://wa.me/${normalizePhoneForWa(apt.clientPhone)}`, "_blank");
                       }}
                       data-testid={`next24h-whatsapp-${apt.id}`}
                     >
@@ -441,15 +492,29 @@ export default function AgendaPage() {
                 </div>
               )}
 
-              <Button
-                variant="outline"
-                className="w-full gap-2"
-                onClick={() => window.open(`https://wa.me/${normalizePhoneForWaMe(selectedAppointment.clientPhone)}`, "_blank")}
-                data-testid="button-continue-whatsapp"
-              >
-                <SiWhatsapp className="h-4 w-4 text-green-500" />
-                Continuer sur WhatsApp
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="default"
+                  className="flex-1 gap-2"
+                  onClick={() => window.open(`https://wa.me/${normalizePhoneForWa(selectedAppointment.clientPhone)}`, "_blank")}
+                  data-testid="button-open-whatsapp"
+                >
+                  <SiWhatsapp className="h-4 w-4" />
+                  Ouvrir WhatsApp
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    navigator.clipboard.writeText(selectedAppointment.clientPhone);
+                    toast({ title: "Copié", description: "Numéro copié dans le presse-papiers" });
+                  }}
+                  data-testid="button-copy-phone"
+                >
+                  <Copy className="h-4 w-4" />
+                  Copier le numéro
+                </Button>
+              </div>
 
               <div className="flex gap-2 pt-2">
                 {selectedAppointment.status === "confirmed" && (
