@@ -64,21 +64,21 @@ export interface IStorage {
   updateService(id: string, updates: Partial<InsertService>): Promise<Service | undefined>;
   deleteService(id: string): Promise<void>;
   
-  // Business Hours
-  getBusinessHours(providerId: string): Promise<BusinessHours[]>;
+  // Business Hours (slot-scoped)
+  getBusinessHours(providerId: string, slotId: string): Promise<BusinessHours[]>;
   upsertBusinessHours(hours: InsertBusinessHours[]): Promise<BusinessHours[]>;
   
-  // Appointments
-  getAppointments(providerId: string, startDate: Date, endDate: Date): Promise<Appointment[]>;
+  // Appointments (slot-scoped)
+  getAppointments(providerId: string, startDate: Date, endDate: Date, slotId: string): Promise<Appointment[]>;
   getAppointment(id: string): Promise<Appointment | undefined>;
-  getUpcomingAppointments(providerId: string, limit?: number): Promise<Appointment[]>;
-  getNextClientAppointment(providerId: string, clientPhone: string): Promise<Appointment | undefined>;
+  getUpcomingAppointments(providerId: string, slotId: string, limit?: number): Promise<Appointment[]>;
+  getNextClientAppointment(providerId: string, clientPhone: string, slotId: string): Promise<Appointment | undefined>;
   createAppointment(appointment: InsertAppointment): Promise<Appointment>;
   updateAppointment(id: string, updates: Partial<InsertAppointment>): Promise<Appointment | undefined>;
   getAppointmentsNeedingReminder(): Promise<Appointment[]>;
   
-  // Blocked Slots
-  getBlockedSlots(providerId: string, startDate: Date, endDate: Date): Promise<BlockedSlot[]>;
+  // Blocked Slots (slot-scoped)
+  getBlockedSlots(providerId: string, startDate: Date, endDate: Date, slotId: string): Promise<BlockedSlot[]>;
   getBlockedSlot(id: string): Promise<BlockedSlot | undefined>;
   createBlockedSlot(slot: InsertBlockedSlot): Promise<BlockedSlot>;
   deleteBlockedSlot(id: string): Promise<void>;
@@ -112,19 +112,20 @@ export interface IStorage {
   // No-Show Reports
   getNoShowReports(providerId: string): Promise<NoShowReport[]>;
   
-  // Base Prices (duration-based pricing)
-  getBasePrices(providerId: string): Promise<BasePrice[]>;
+  // Base Prices (slot-scoped)
+  getBasePrices(providerId: string, slotId: string): Promise<BasePrice[]>;
   upsertBasePrice(price: InsertBasePrice): Promise<BasePrice>;
   updateBasePrice(id: string, updates: Partial<InsertBasePrice>): Promise<BasePrice | undefined>;
   
-  // Service Extras (predefined extras)
-  getServiceExtras(providerId: string): Promise<ServiceExtra[]>;
+  // Service Extras (slot-scoped)
+  getServiceExtras(providerId: string, slotId: string): Promise<ServiceExtra[]>;
   upsertServiceExtra(extra: InsertServiceExtra): Promise<ServiceExtra>;
   updateServiceExtra(id: string, updates: Partial<InsertServiceExtra>): Promise<ServiceExtra | undefined>;
-  initializeDefaultExtras(providerId: string): Promise<void>;
+  initializeDefaultExtras(providerId: string, slotId: string): Promise<void>;
   
-  // Custom Extras (user-defined)
-  getCustomExtras(providerId: string): Promise<CustomExtra[]>;
+  // Custom Extras (slot-scoped)
+  getCustomExtras(providerId: string, slotId: string): Promise<CustomExtra[]>;
+  getCustomExtra(id: string): Promise<CustomExtra | undefined>;
   createCustomExtra(extra: InsertCustomExtra): Promise<CustomExtra>;
   updateCustomExtra(id: string, updates: Partial<InsertCustomExtra>): Promise<CustomExtra | undefined>;
   deleteCustomExtra(id: string): Promise<void>;
@@ -212,9 +213,11 @@ export class DatabaseStorage implements IStorage {
     await db.delete(services).where(eq(services.id, id));
   }
 
-  // Business Hours
-  async getBusinessHours(providerId: string): Promise<BusinessHours[]> {
-    return db.select().from(businessHours).where(eq(businessHours.providerId, providerId));
+  // Business Hours (slot-scoped)
+  async getBusinessHours(providerId: string, slotId: string): Promise<BusinessHours[]> {
+    return db.select().from(businessHours).where(
+      and(eq(businessHours.providerId, providerId), eq(businessHours.slotId, slotId))
+    );
   }
 
   async upsertBusinessHours(hours: InsertBusinessHours[]): Promise<BusinessHours[]> {
@@ -227,11 +230,12 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
-  // Appointments
-  async getAppointments(providerId: string, startDate: Date, endDate: Date): Promise<Appointment[]> {
+  // Appointments (slot-scoped)
+  async getAppointments(providerId: string, startDate: Date, endDate: Date, slotId: string): Promise<Appointment[]> {
     return db.select().from(appointments).where(
       and(
         eq(appointments.providerId, providerId),
+        eq(appointments.slotId, slotId),
         gte(appointments.appointmentDate, startDate),
         lte(appointments.appointmentDate, endDate)
       )
@@ -243,20 +247,22 @@ export class DatabaseStorage implements IStorage {
     return apt;
   }
 
-  async getUpcomingAppointments(providerId: string, limit = 10): Promise<Appointment[]> {
+  async getUpcomingAppointments(providerId: string, slotId: string, limit = 10): Promise<Appointment[]> {
     return db.select().from(appointments).where(
       and(
         eq(appointments.providerId, providerId),
+        eq(appointments.slotId, slotId),
         gte(appointments.appointmentDate, new Date()),
         eq(appointments.status, "confirmed")
       )
     ).orderBy(appointments.appointmentDate).limit(limit);
   }
 
-  async getNextClientAppointment(providerId: string, clientPhone: string): Promise<Appointment | undefined> {
+  async getNextClientAppointment(providerId: string, clientPhone: string, slotId: string): Promise<Appointment | undefined> {
     const [apt] = await db.select().from(appointments).where(
       and(
         eq(appointments.providerId, providerId),
+        eq(appointments.slotId, slotId),
         eq(appointments.clientPhone, clientPhone),
         gte(appointments.appointmentDate, new Date()),
         eq(appointments.status, "confirmed")
@@ -289,11 +295,12 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
-  // Blocked Slots
-  async getBlockedSlots(providerId: string, startDate: Date, endDate: Date): Promise<BlockedSlot[]> {
+  // Blocked Slots (slot-scoped)
+  async getBlockedSlots(providerId: string, startDate: Date, endDate: Date, slotId: string): Promise<BlockedSlot[]> {
     return db.select().from(blockedSlots).where(
       and(
         eq(blockedSlots.providerId, providerId),
+        eq(blockedSlots.slotId, slotId),
         gte(blockedSlots.startTime, startDate),
         lte(blockedSlots.endTime, endDate)
       )
@@ -505,10 +512,10 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(noShowReports.reportedAt));
   }
   
-  // Base Prices
-  async getBasePrices(providerId: string): Promise<BasePrice[]> {
+  // Base Prices (slot-scoped)
+  async getBasePrices(providerId: string, slotId: string): Promise<BasePrice[]> {
     return db.select().from(basePrices)
-      .where(eq(basePrices.providerId, providerId))
+      .where(and(eq(basePrices.providerId, providerId), eq(basePrices.slotId, slotId)))
       .orderBy(basePrices.duration);
   }
   
@@ -541,10 +548,10 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
   
-  // Service Extras (predefined)
-  async getServiceExtras(providerId: string): Promise<ServiceExtra[]> {
+  // Service Extras (slot-scoped)
+  async getServiceExtras(providerId: string, slotId: string): Promise<ServiceExtra[]> {
     return db.select().from(serviceExtras)
-      .where(eq(serviceExtras.providerId, providerId));
+      .where(and(eq(serviceExtras.providerId, providerId), eq(serviceExtras.slotId, slotId)));
   }
   
   async upsertServiceExtra(extra: InsertServiceExtra): Promise<ServiceExtra> {
@@ -575,7 +582,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
   
-  async initializeDefaultExtras(providerId: string): Promise<void> {
+  async initializeDefaultExtras(providerId: string, slotId: string): Promise<void> {
     const defaultExtras = [
       "Anal",
       "Fellatio without condom",
@@ -593,6 +600,7 @@ export class DatabaseStorage implements IStorage {
       const [existing] = await db.select().from(serviceExtras).where(
         and(
           eq(serviceExtras.providerId, providerId),
+          eq(serviceExtras.slotId, slotId),
           eq(serviceExtras.extraType, extraType)
         )
       );
@@ -600,6 +608,7 @@ export class DatabaseStorage implements IStorage {
       if (!existing) {
         await db.insert(serviceExtras).values({
           providerId,
+          slotId,
           extraType,
           active: false,
           price: 0,
@@ -608,11 +617,16 @@ export class DatabaseStorage implements IStorage {
     }
   }
   
-  // Custom Extras
-  async getCustomExtras(providerId: string): Promise<CustomExtra[]> {
+  // Custom Extras (slot-scoped)
+  async getCustomExtras(providerId: string, slotId: string): Promise<CustomExtra[]> {
     return db.select().from(customExtras)
-      .where(eq(customExtras.providerId, providerId))
+      .where(and(eq(customExtras.providerId, providerId), eq(customExtras.slotId, slotId)))
       .orderBy(desc(customExtras.createdAt));
+  }
+  
+  async getCustomExtra(id: string): Promise<CustomExtra | undefined> {
+    const [extra] = await db.select().from(customExtras).where(eq(customExtras.id, id));
+    return extra;
   }
   
   async createCustomExtra(extra: InsertCustomExtra): Promise<CustomExtra> {

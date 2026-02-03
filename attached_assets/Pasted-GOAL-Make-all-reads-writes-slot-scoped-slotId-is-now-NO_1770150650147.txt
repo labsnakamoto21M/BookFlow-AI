@@ -1,0 +1,85 @@
+GOAL: Make all reads/writes slot-scoped. slotId is now NOT NULL everywhere; server must always provide a slotId for all queries & inserts. No frontend refactor.
+
+CONSTRAINTS:
+
+Do NOT change frontend in this step.
+
+Keep current routes stable.
+
+If client does not send slotId, server must pick a default slot for this provider.
+
+Brussels timezone remains Europe/Brussels.
+
+Keep providerId auth model as-is.
+
+TASKS:
+
+Add helper:
+
+Implement async function getDefaultSlotId(providerId: string): Promise<string> in storage (or routes helper):
+
+fetch slots for providerId ordered by sortOrder asc (or createdAt asc)
+
+return first slot.id
+
+if none, throw 400 "no slot configured"
+
+Implement function getActiveSlotId(req, providerId): Promise<string>:
+
+accept req.query.slotId or req.body.slotId if provided and belongs to provider
+
+else fallback to default slot id
+
+Update storage signatures (server side only):
+
+Update these to require slotId:
+
+getAppointments(providerId, startDate, endDate, slotId)
+
+getUpcomingAppointments(providerId, slotId, limit?)
+
+getNextClientAppointment(providerId, clientPhone, slotId)
+
+getBlockedSlots(providerId, startDate, endDate, slotId)
+
+getBusinessHours(providerId, slotId)
+
+getBasePrices(providerId, slotId)
+
+getServiceExtras(providerId, slotId)
+
+getCustomExtras(providerId, slotId)
+
+Ensure all queries include eq(table.slotId, slotId).
+
+Update routes.ts to pass slotId:
+
+For each API route above, call slotId = await getActiveSlotId(req, profile.id) and pass into storage.
+
+For create/update endpoints that insert rows (blocked slots, base prices, extras, appointments), enforce:
+
+Always write slotId = active slotId
+
+Reject if slotId missing and provider has no slots.
+
+Update whatsapp.ts usages:
+
+Any call to storage.getAppointments / getBlockedSlots / getBusinessHours / pricing/extras must pass session.slotId (already resolved earlier).
+
+Ensure booking creation always includes slotId from session.
+
+DELIVERABLES:
+
+App compiles.
+
+Existing UI still works without frontend changes.
+
+All appointment lists and agenda reflect the same slot (default slot for now).
+
+Logging: when routes choose default slot, log [SLOT] default slotId used: ....
+
+TESTS (manual):
+
+Load Agenda page, ensure requests succeed and appointments render.
+
+Confirm a booking via WhatsApp, ensure it appears in Agenda for same provider.

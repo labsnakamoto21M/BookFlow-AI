@@ -22,6 +22,39 @@ import { fromZonedTime } from "date-fns-tz";
 
 const BRUSSELS_TZ = "Europe/Brussels";
 
+// Slot helper: Get default slotId for provider (first by sortOrder, then createdAt)
+async function getDefaultSlotId(providerId: string): Promise<string> {
+  const providerSlots = await storage.getSlots(providerId);
+  if (providerSlots.length === 0) {
+    throw { status: 400, message: "no slot configured" };
+  }
+  const sorted = providerSlots.sort((a, b) => {
+    if ((a.sortOrder || 0) !== (b.sortOrder || 0)) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    }
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
+  return sorted[0].id;
+}
+
+// Slot helper: Get active slotId from request (query/body) or fallback to default
+async function getActiveSlotId(req: any, providerId: string): Promise<string> {
+  const requestedSlotId = req.query?.slotId || req.body?.slotId;
+  
+  if (requestedSlotId) {
+    // Validate ownership
+    const slot = await storage.getSlot(requestedSlotId);
+    if (slot && slot.providerId === providerId) {
+      return requestedSlotId;
+    }
+  }
+  
+  // Fallback to default
+  const defaultSlotId = await getDefaultSlotId(providerId);
+  console.log(`[SLOT] default slotId used: ${defaultSlotId}`);
+  return defaultSlotId;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
