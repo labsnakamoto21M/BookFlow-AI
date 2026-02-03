@@ -63,11 +63,11 @@ export const services = pgTable("services", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Base prices by duration (Prive vs Escort) - now per slot
+// Base prices by duration (Prive vs Escort) - per slot (V1 strict: slotId required)
 export const basePrices = pgTable("base_prices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
-  slotId: varchar("slot_id"), // Optional: if null, applies to provider default
+  slotId: varchar("slot_id").notNull(), // V1 STRICT: Required, links to specific slot
   duration: integer("duration").notNull(), // in minutes: 15, 30, 45, 60, 90, 120
   pricePrivate: integer("price_private").default(0), // in cents
   priceEscort: integer("price_escort").default(0), // in cents
@@ -77,34 +77,38 @@ export const basePrices = pgTable("base_prices", {
   index("idx_base_prices_slot").on(table.slotId),
 ]);
 
-// Predefined extras (fixed list)
+// Predefined extras (fixed list) - per slot (V1 strict: slotId required)
 export const serviceExtras = pgTable("service_extras", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
+  slotId: varchar("slot_id").notNull(), // V1 STRICT: Required, links to specific slot
   extraType: text("extra_type").notNull(), // predefined type name
   active: boolean("active").default(false),
   price: integer("price").default(0), // supplement price in cents
 }, (table) => [
   index("idx_service_extras_provider").on(table.providerId),
+  index("idx_service_extras_slot").on(table.slotId),
 ]);
 
-// Custom extras (user-defined)
+// Custom extras (user-defined) - per slot (V1 strict: slotId required)
 export const customExtras = pgTable("custom_extras", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
+  slotId: varchar("slot_id").notNull(), // V1 STRICT: Required, links to specific slot
   name: text("name").notNull(),
   price: integer("price").default(0), // in cents
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_custom_extras_provider").on(table.providerId),
+  index("idx_custom_extras_slot").on(table.slotId),
 ]);
 
-// Business hours for providers - now per slot
+// Business hours for providers - per slot (V1 strict: slotId required)
 export const businessHours = pgTable("business_hours", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
-  slotId: varchar("slot_id"), // Optional: if null, applies to provider default
+  slotId: varchar("slot_id").notNull(), // V1 STRICT: Required, links to specific slot
   dayOfWeek: integer("day_of_week").notNull(), // 0 = Sunday, 6 = Saturday
   openTime: time("open_time").notNull(),
   closeTime: time("close_time").notNull(),
@@ -113,11 +117,11 @@ export const businessHours = pgTable("business_hours", {
   index("idx_business_hours_slot").on(table.slotId),
 ]);
 
-// Appointments - now per slot
+// Appointments - per slot (V1 strict: slotId required)
 export const appointments = pgTable("appointments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
-  slotId: varchar("slot_id"), // Optional: links to specific masseuse
+  slotId: varchar("slot_id").notNull(), // V1 STRICT: Required, links to specific slot
   serviceId: varchar("service_id"), // NULLABLE: bot can book without explicit service ID
   clientPhone: text("client_phone").notNull(),
   clientName: text("client_name"),
@@ -131,17 +135,21 @@ export const appointments = pgTable("appointments", {
   index("idx_appointments_provider").on(table.providerId),
   index("idx_appointments_slot").on(table.slotId),
   index("idx_appointments_date").on(table.appointmentDate),
+  index("idx_appointments_slot_date").on(table.slotId, table.appointmentDate),
 ]);
 
-// Blocked time slots
+// Blocked time slots - per slot (V1 strict: slotId required)
 export const blockedSlots = pgTable("blocked_slots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
+  slotId: varchar("slot_id").notNull(), // V1 STRICT: Required, links to specific slot
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_blocked_slots_slot").on(table.slotId),
+]);
 
 // Shared blacklist for no-show clients
 export const blacklist = pgTable("blacklist", {
@@ -204,10 +212,11 @@ export const safetyBlacklist = pgTable("safety_blacklist", {
   index("idx_safety_blacklist_phone").on(table.phone),
 ]);
 
-// Conversation sessions - Persistent state for WhatsApp bot conversations
+// Conversation sessions - Persistent state for WhatsApp bot conversations (V1 strict: slotId required)
 export const conversationSessions = pgTable("conversation_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull(),
+  slotId: varchar("slot_id").notNull(), // V1 STRICT: Required, links to specific slot
   clientPhone: text("client_phone").notNull(),
   serviceId: varchar("service_id"),
   sessionType: text("session_type"), // private, escort
@@ -229,6 +238,8 @@ export const conversationSessions = pgTable("conversation_sessions", {
 }, (table) => [
   index("idx_conv_sessions_provider").on(table.providerId),
   index("idx_conv_sessions_phone").on(table.clientPhone),
+  index("idx_conv_sessions_slot").on(table.slotId),
+  index("idx_conv_sessions_slot_phone").on(table.slotId, table.clientPhone),
 ]);
 
 // Relations
@@ -248,6 +259,10 @@ export const slotsRelations = relations(slots, ({ one, many }) => ({
   appointments: many(appointments),
   businessHours: many(businessHours),
   basePrices: many(basePrices),
+  serviceExtras: many(serviceExtras),
+  customExtras: many(customExtras),
+  blockedSlots: many(blockedSlots),
+  conversationSessions: many(conversationSessions),
 }));
 
 export const servicesRelations = relations(services, ({ one }) => ({
@@ -280,6 +295,50 @@ export const appointmentsRelations = relations(appointments, ({ one }) => ({
   service: one(services, {
     fields: [appointments.serviceId],
     references: [services.id],
+  }),
+}));
+
+export const blockedSlotsRelations = relations(blockedSlots, ({ one }) => ({
+  provider: one(providerProfiles, {
+    fields: [blockedSlots.providerId],
+    references: [providerProfiles.id],
+  }),
+  slot: one(slots, {
+    fields: [blockedSlots.slotId],
+    references: [slots.id],
+  }),
+}));
+
+export const serviceExtrasRelations = relations(serviceExtras, ({ one }) => ({
+  provider: one(providerProfiles, {
+    fields: [serviceExtras.providerId],
+    references: [providerProfiles.id],
+  }),
+  slot: one(slots, {
+    fields: [serviceExtras.slotId],
+    references: [slots.id],
+  }),
+}));
+
+export const customExtrasRelations = relations(customExtras, ({ one }) => ({
+  provider: one(providerProfiles, {
+    fields: [customExtras.providerId],
+    references: [providerProfiles.id],
+  }),
+  slot: one(slots, {
+    fields: [customExtras.slotId],
+    references: [slots.id],
+  }),
+}));
+
+export const conversationSessionsRelations = relations(conversationSessions, ({ one }) => ({
+  provider: one(providerProfiles, {
+    fields: [conversationSessions.providerId],
+    references: [providerProfiles.id],
+  }),
+  slot: one(slots, {
+    fields: [conversationSessions.slotId],
+    references: [slots.id],
   }),
 }));
 
