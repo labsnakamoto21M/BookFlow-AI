@@ -83,19 +83,36 @@ export default function AgendaPage() {
     queryKey: ["/api/slots"],
   });
 
+  // Effect 1: Resolve activeSlotId when slots arrive
   useEffect(() => {
-    if (slots && slots.length > 0 && !activeSlotId) {
-      const sorted = [...slots].sort((a, b) => {
-        const sortA = a.sortOrder ?? 0;
-        const sortB = b.sortOrder ?? 0;
-        if (sortA !== sortB) return sortA - sortB;
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return dateA - dateB;
-      });
-      setActiveSlotId(sorted[0].id);
+    if (!slots || slots.length === 0) return;
+
+    const stored = localStorage.getItem("activeSlotId");
+
+    // Deterministic sort: sortOrder asc, then createdAt asc
+    const sortedSlots = [...slots].sort((a, b) => {
+      const sortA = a.sortOrder ?? 0;
+      const sortB = b.sortOrder ?? 0;
+      if (sortA !== sortB) return sortA - sortB;
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateA - dateB;
+    });
+
+    // If stored slot exists in list, use it; otherwise fallback to first
+    if (stored && sortedSlots.some(s => s.id === stored)) {
+      setActiveSlotId(stored);
+    } else {
+      setActiveSlotId(sortedSlots[0].id);
     }
-  }, [slots, activeSlotId]);
+  }, [slots]);
+
+  // Effect 2: Persist activeSlotId to localStorage
+  useEffect(() => {
+    if (activeSlotId) {
+      localStorage.setItem("activeSlotId", activeSlotId);
+    }
+  }, [activeSlotId]);
 
   const { data: appointments, isLoading: appointmentsLoading } = useQuery<AppointmentWithService[]>({
     queryKey: ["/api/appointments", { start: weekStartStr, end: weekEndStr, slotId: activeSlotId }],
