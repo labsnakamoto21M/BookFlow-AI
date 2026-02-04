@@ -627,6 +627,7 @@ export async function registerRoutes(
   app.patch("/api/appointments/:id", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const { id } = req.params;
       const appointment = await storage.getAppointment(id);
       
@@ -638,14 +639,21 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Forbidden" });
       }
 
+      // V1 slot isolation: verify appointment belongs to active slot
+      if (appointment.slotId !== slotId) {
+        return res.status(403).json({ message: "Wrong slot" });
+      }
+
+      // Only allow status updates (no providerId/slotId/appointmentDate changes)
       const validStatuses = ["confirmed", "cancelled", "completed", "no-show"];
-      if (req.body.status && !validStatuses.includes(req.body.status)) {
+      if (!req.body.status || !validStatuses.includes(req.body.status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
 
-      const updated = await storage.updateAppointment(id, req.body);
+      const updated = await storage.updateAppointment(id, { status: req.body.status });
       res.json(updated);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error updating appointment:", error);
       res.status(500).json({ message: "Failed to update appointment" });
     }
@@ -937,6 +945,7 @@ export async function registerRoutes(
   app.post("/api/appointments/:id/noshow", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = await getActiveSlotId(req, profile.id);
       const { id } = req.params;
       const appointment = await storage.getAppointment(id);
       
@@ -946,6 +955,11 @@ export async function registerRoutes(
 
       if (appointment.providerId !== profile.id) {
         return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // V1 slot isolation: verify appointment belongs to active slot
+      if (appointment.slotId !== slotId) {
+        return res.status(403).json({ message: "Wrong slot" });
       }
 
       // Update appointment status to no-show
@@ -962,7 +976,8 @@ export async function registerRoutes(
         noShowTotal: reliability.noShowTotal,
         message: "No-show marked and warning sent to client"
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error.status === 400) return res.status(400).json({ message: error.message });
       console.error("Error marking no-show:", error);
       res.status(500).json({ message: "Failed to mark no-show" });
     }
