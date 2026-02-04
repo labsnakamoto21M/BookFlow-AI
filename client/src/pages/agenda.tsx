@@ -129,29 +129,33 @@ export default function AgendaPage() {
     enabled: !!activeSlotId,
   });
 
+  // Invalidate exact query keys for slot-scoped data
   const invalidateAppointmentsQueries = () => {
+    queryClient.invalidateQueries({ 
+      queryKey: ["/api/appointments", { start: weekStartStr, end: weekEndStr, slotId: activeSlotId }]
+    });
+    queryClient.invalidateQueries({ 
+      queryKey: ["/api/appointments/next24h", { slotId: activeSlotId }]
+    });
     queryClient.invalidateQueries({ 
       predicate: (query) => {
         const key = query.queryKey[0];
-        return typeof key === 'string' && (
-          key.startsWith('/api/appointments') || 
-          key.startsWith('/api/dashboard')
-        );
+        return typeof key === 'string' && key.startsWith('/api/dashboard');
       }
     });
   };
 
   const invalidateBlockedSlotsQueries = () => {
     queryClient.invalidateQueries({ 
-      predicate: (query) => {
-        const key = query.queryKey[0];
-        return typeof key === 'string' && key.startsWith('/api/blocked-slots');
-      }
+      queryKey: ["/api/blocked-slots", { start: weekStartStr, end: weekEndStr, slotId: activeSlotId }]
     });
   };
 
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("PATCH", `/api/appointments/${id}`, { status: "cancelled" }),
+    mutationFn: (id: string) => apiRequest("PATCH", `/api/appointments/${id}`, { 
+      status: "cancelled", 
+      slotId: activeSlotId 
+    }),
     onSuccess: () => {
       invalidateAppointmentsQueries();
       toast({ title: "Succès", description: "Rendez-vous annulé" });
@@ -162,13 +166,30 @@ export default function AgendaPage() {
     },
   });
 
+  const completeMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("PATCH", `/api/appointments/${id}`, { 
+      status: "completed", 
+      slotId: activeSlotId 
+    }),
+    onSuccess: () => {
+      invalidateAppointmentsQueries();
+      toast({ title: "Succès", description: "Rendez-vous marqué comme terminé" });
+      setSelectedAppointment(null);
+    },
+    onError: () => {
+      toast({ title: "Erreur", description: "Impossible de marquer comme terminé", variant: "destructive" });
+    },
+  });
+
   const noShowMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("POST", `/api/appointments/${id}/noshow`),
+    mutationFn: (id: string) => apiRequest("POST", `/api/appointments/${id}/noshow`, { 
+      slotId: activeSlotId 
+    }),
     onSuccess: (data: any) => {
       invalidateAppointmentsQueries();
       toast({ 
-        title: "No-show enregistre", 
-        description: `Message d'avertissement envoye. Total absences: ${data.noShowTotal}` 
+        title: "No-show enregistré", 
+        description: `Message d'avertissement envoyé. Total absences: ${data.noShowTotal}` 
       });
       setSelectedAppointment(null);
     },
@@ -556,26 +577,49 @@ export default function AgendaPage() {
                 </Button>
               </div>
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex flex-col gap-2 pt-2">
                 {selectedAppointment.status === "confirmed" && (
                   <>
-                    <Button
-                      variant="outline"
-                      className="flex-1 border-red-500 text-red-500 hover:bg-red-500/10"
-                      onClick={() => noShowMutation.mutate(selectedAppointment.id)}
-                      disabled={noShowMutation.isPending}
-                      data-testid="button-no-show"
-                    >
-                      REPORT_GHOST
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          if (window.confirm("Marquer ce rendez-vous comme terminé ?")) {
+                            completeMutation.mutate(selectedAppointment.id);
+                          }
+                        }}
+                        disabled={completeMutation.isPending}
+                        data-testid="button-complete-appointment"
+                      >
+                        Terminé
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 border-orange-500 text-orange-500 hover:bg-orange-500/10"
+                        onClick={() => {
+                          if (window.confirm("Signaler ce client comme absent (no-show) ? Un avertissement lui sera envoyé.")) {
+                            noShowMutation.mutate(selectedAppointment.id);
+                          }
+                        }}
+                        disabled={noShowMutation.isPending}
+                        data-testid="button-no-show"
+                      >
+                        No-show
+                      </Button>
+                    </div>
                     <Button
                       variant="destructive"
-                      className="flex-1"
-                      onClick={() => cancelMutation.mutate(selectedAppointment.id)}
+                      className="w-full"
+                      onClick={() => {
+                        if (window.confirm("Annuler ce rendez-vous ?")) {
+                          cancelMutation.mutate(selectedAppointment.id);
+                        }
+                      }}
                       disabled={cancelMutation.isPending}
                       data-testid="button-cancel-appointment"
                     >
-                      Annuler
+                      Annuler le rendez-vous
                     </Button>
                   </>
                 )}

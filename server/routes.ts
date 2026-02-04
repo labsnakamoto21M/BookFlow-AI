@@ -29,10 +29,12 @@ async function getDefaultSlotId(providerId: string): Promise<string> {
     throw { status: 400, message: "no slot configured" };
   }
   const sorted = providerSlots.sort((a, b) => {
-    if ((a.sortOrder || 0) !== (b.sortOrder || 0)) {
-      return (a.sortOrder || 0) - (b.sortOrder || 0);
-    }
-    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    const sortA = a.sortOrder ?? 0;
+    const sortB = b.sortOrder ?? 0;
+    if (sortA !== sortB) return sortA - sortB;
+    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return dateA - dateB;
   });
   return sorted[0].id;
 }
@@ -50,9 +52,7 @@ async function getActiveSlotId(req: any, providerId: string): Promise<string> {
   }
   
   // Fallback to default
-  const defaultSlotId = await getDefaultSlotId(providerId);
-  console.log(`[SLOT] default slotId used: ${defaultSlotId}`);
-  return defaultSlotId;
+  return await getDefaultSlotId(providerId);
 }
 
 export async function registerRoutes(
