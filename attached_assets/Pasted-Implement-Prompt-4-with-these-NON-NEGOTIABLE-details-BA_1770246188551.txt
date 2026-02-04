@@ -1,0 +1,50 @@
+Implement Prompt 4 with these NON-NEGOTIABLE details.
+
+BACKEND (server/routes.ts)
+1) PATCH /api/appointments/:id must be slot-safe:
+- resolve profile
+- const slotId = await getActiveSlotId(req, profile.id)
+- fetch appointment by id
+- 404 if missing
+- 403 if appointment.providerId !== profile.id
+- 403 if appointment.slotId !== slotId with message "Wrong slot"
+- Only allow updating: status (and keep current validation list confirmed/cancelled/completed/no-show)
+- Do NOT allow updating providerId/slotId/appointmentDate/etc
+- Return updated appointment
+
+2) POST /api/appointments/:id/noshow must be slot-safe:
+- resolve profile
+- const slotId = await getActiveSlotId(req, profile.id)
+- fetch appointment by id
+- 404 if missing
+- 403 if appointment.providerId !== profile.id
+- 403 if appointment.slotId !== slotId with message "Wrong slot"
+- set status="no-show", increment reliability, send warning (existing behavior)
+- return {success:true, noShowTotal}
+
+FRONTEND (client/src/pages/agenda.tsx)
+3) Add completedMutation:
+- PATCH /api/appointments/:id with body { status:"completed", slotId: activeSlotId }
+
+4) Ensure slotId is included in ALL mutations:
+- cancel: { status:"cancelled", slotId: activeSlotId }
+- complete: { status:"completed", slotId: activeSlotId }
+- noshow: POST /api/appointments/:id/noshow with body { slotId: activeSlotId }
+
+5) Add confirmation modals (window.confirm OK for V1) for cancel and no-show.
+
+6) React Query invalidation MUST target the exact keys used:
+- invalidate ["/api/appointments", { start: weekStartStr, end: weekEndStr, slotId: activeSlotId }]
+- invalidate ["/api/appointments/next24h", { slotId: activeSlotId }]
+(Do not rely only on prefix invalidation.)
+
+7) Disable buttons during pending mutation, keep WhatsApp link behavior as is.
+
+TEST (minimal)
+8) Add a minimal verification script or test:
+- create 2 slots under same provider
+- create appointment per slot
+- attempt PATCH cancel slotA appointment with slotId=slotB -> expect 403
+- document how to run it
+
+No console.log in final. Keep Brussels timezone logic intact.

@@ -1,0 +1,85 @@
+PROMPT 4 (V1) — Agenda actions + invariants (cancel / no-show / completed) + WhatsApp deep-link
+
+Context:
+We are in V1 with strict slotId everywhere (DB + storage + routes + whatsapp). Agenda UI now supports slot selector and passes slotId to the 3 queries.
+
+Goal of Prompt 4:
+Make the Agenda operational end-to-end for a provider:
+1) Cancel an appointment from the agenda
+2) Mark a no-show from the agenda (already exists as POST /api/appointments/:id/noshow but must be slot-safe + update UI state)
+3) Mark completed from the agenda
+4) Add a “Open WhatsApp chat” action consistently everywhere (list row + details dialog), using wa.me/<digits>
+5) Ensure all mutations include slotId and server verifies slot ownership + slot isolation
+
+Hard constraints:
+- slotId MUST be enforced on all write/mutation operations (not only reads).
+- Any appointment mutation must verify:
+  - appointment.providerId === current provider profile id
+  - appointment.slotId === active slotId (or request slotId) to prevent cross-slot edits
+- UI must invalidate/refetch the correct queries using the activeSlotId params convention:
+  - ["/api/appointments", { start, end, slotId }]
+  - ["/api/blocked-slots", { start, end, slotId }]
+  - ["/api/appointments/next24h", { slotId }]
+- No storing message content (GDPR constraint stays).
+- Keep Brussels timezone logic for date boundaries.
+
+Tasks:
+A) Backend: make appointment mutations slot-safe and consistent
+1. Update PATCH /api/appointments/:id:
+   - Resolve slotId via getActiveSlotId(req, profile.id)
+   - Fetch appointment by id
+   - If not found => 404
+   - If providerId mismatch => 403
+   - If appointment.slotId !== slotId => 403 with message "Wrong slot"
+   - Allow status transitions only to: confirmed, cancelled, completed, no-show
+   - If cancelling, set status="cancelled"
+   - Return updated appointment
+
+2. Update POST /api/appointments/:id/noshow:
+   - Resolve slotId
+   - Same provider + slot checks as above
+   - Update appointment status="no-show"
+   - Increment reliability + send warning (existing behavior)
+   - Return {success, noShowTotal}
+
+(If any of these endpoints currently do not pass slotId, fix them.)
+
+B) Frontend: implement agenda actions using the existing UI patterns
+1. In agenda.tsx:
+   - Ensure you have activeSlotId in state (already done)
+   - For each appointment row and in the details dialog:
+     - Add “WhatsApp” button (secondary) linking to https://wa.me/<digits> using normalizePhoneForWa(phone)
+     - Add data-testid="button-open-whatsapp" on this button (keep existing)
+   - Add 3 mutations:
+     - cancelMutation -> PATCH /api/appointments/:id with { status:"cancelled", slotId: activeSlotId }
+     - completeMutation -> PATCH /api/appointments/:id with { status:"completed", slotId: activeSlotId }
+     - noshowMutation -> POST /api/appointments/:id/noshow with { slotId: activeSlotId }
+   - On success of any mutation:
+     - invalidate queries for appointments + next24h (and blocked-slots only if needed)
+       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] , exact:false }) is OK only if you keep query keys consistent.
+       Prefer invalidating the precise keys:
+         ["/api/appointments", { start, end, slotId: activeSlotId }]
+         ["/api/appointments/next24h", { slotId: activeSlotId }]
+   - Update UI state so the appointment disappears from “next24h” if no longer confirmed.
+
+2. UX details:
+   - Confirm modal for cancel + no-show (simple window.confirm is acceptable for V1).
+   - When marking no-show, show toast with the updated noShowTotal (from response).
+   - Disable buttons while mutation is pending.
+
+C) Tests / verification:
+1. Add minimal server-side test (or a script) that:
+   - Creates 2 slots under same provider, creates one appointment per slot
+   - Attempts to cancel slotA appointment while passing slotId=slotB => must return 403
+2. Manual verification checklist:
+   - Switch slot in agenda, mark no-show on an appointment => only affects that slot
+   - next24h updates correctly
+   - WhatsApp link opens correct chat
+
+Important implementation notes:
+- Keep using the queryKey convention introduced earlier: [url, paramsObject]
+- Don’t regress time boundary logic (fromZonedTime for start/end days in Brussels)
+- Keep code clean: no console.log in final.
+
+Deliverable:
+Implement changes, ensure app compiles and runs, and summarize what changed + how to verify quickly (curl examples welcome).
