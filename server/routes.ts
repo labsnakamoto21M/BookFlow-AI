@@ -243,11 +243,12 @@ export async function registerRoutes(
   app.post("/api/slots", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const user = await storage.getUserById(profile.userId);
+      const isDev = process.env.REPLIT_DEPLOYMENT !== "1";
       const maxSlots = profile.maxSlots || 1;
       const existingSlots = await storage.getSlots(profile.id);
       
-      if (existingSlots.length >= maxSlots) {
+      // En prod: limite active. En dev: bypass.
+      if (!isDev && existingSlots.length >= maxSlots) {
         return res.status(403).json({ 
           message: `Limite de ${maxSlots} numero(s) atteinte. Passez a un plan superieur.`,
           maxSlots,
