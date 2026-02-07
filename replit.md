@@ -60,6 +60,14 @@ Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Ma
 9. **Anti-ban Censorship**: Automatic text obfuscation for sensitive content
 10. **Internationalization (i18n)**: Complete multi-language support for 11 languages
 
+### Hybrid Bot Architecture (GPT + Deterministic)
+- **Intent Classification**: GPT-4o-mini classifies user intent (~100 tokens) into 17 types: greeting, availability, price_query, extras_query, duration_choice, slot_selection, booking_confirm, service_type_private/escort, cancel_request/confirm, address_query, reassurance, arrival, time_query, photo_request, off_topic
+- **Hard Guards**: Pre-classification checks block impossible bookings (e.g., "ce soir" when today full, both days full)
+- **Deterministic Handlers**: Extras (always from DB), prices, availability, slot selection (validated against slotMapping), address queries (T-15 rule), photo requests, off-topic guardrails
+- **Slot Selection**: Deterministic validation maps slot numbers/times to actual available slots, creates bookings directly via `createBookingDeterministic()` — never relies on GPT to pick times
+- **GPT Response Generator**: Only used for natural text generation on intents that need conversational flow (greetings, reassurance, low-confidence fallback)
+- **Fallback**: `classifyIntentFallback()` regex-based classifier if GPT times out or errors
+
 ### Internationalization System
 - **Framework**: i18next with react-i18next
 - **Supported Languages**: FR (French - default), NL (Dutch), EN (English), ES (Spanish), RO (Romanian), PT (Portuguese), DE (German), SQ (Albanian), HU (Hungarian), IT (Italian), ZH (Chinese)

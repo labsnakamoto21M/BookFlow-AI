@@ -73,6 +73,36 @@ interface ConversationState {
   offTopicCount: number; // Progressive guardrail counter
 }
 
+type IntentType = 
+  | "greeting"
+  | "availability" 
+  | "price_query"
+  | "extras_query"
+  | "duration_choice"
+  | "slot_selection"
+  | "booking_confirm"
+  | "service_type_private"
+  | "service_type_escort"
+  | "cancel_request"
+  | "cancel_confirm"
+  | "address_query"
+  | "reassurance"
+  | "arrival"
+  | "time_query"
+  | "photo_request"
+  | "off_topic";
+
+interface ClassifiedIntent {
+  intent: IntentType;
+  confidence: number;
+  entities: {
+    duration?: number;
+    time?: string;
+    slotNumber?: number;
+    language?: string;
+  };
+}
+
 const logger = pino({ level: "silent" });
 
 class WhatsAppManager {
@@ -181,6 +211,172 @@ class WhatsAppManager {
   // Clear conversation state from DB
   private async clearState(providerId: string, clientPhone: string): Promise<void> {
     await storage.deleteConversationSession(providerId, clientPhone);
+  }
+
+  private async classifyIntent(
+    userMessage: string, 
+    detectedLanguage: string,
+    conversationContext: string,
+    isPostBooking: boolean
+  ): Promise<ClassifiedIntent> {
+    const postBookingIntents = isPostBooking 
+      ? `- "time_query": asking about appointment time/schedule ("c quand?", "a quelle heure?", "when is it?")
+- "arrival": client says they arrived or are nearby ("je suis la", "arrived", "jsuis devant", "ik ben er")
+- "cancel_request": wants to cancel ("annule", "je peux pas", "can't come", "peux plus", "cancel")
+- "cancel_confirm": confirms cancellation ("oui annuler", "yes cancel", "confirme annulation")
+- "reassurance": acknowledging/thanking ("ok", "merci", "d'accord", "perfect", "a toute")
+- "address_query": asking where/location ("c'est ou?", "adresse?", "where?", "t'es ou?")
+- "booking_confirm": trying to book again ("rdv", "reserver", "autre heure", "dispo")
+- "off_topic": unrelated to booking` 
+      : `- "greeting": hello/hi/salut/cc/coucou/hey/bonjour/bonsoir
+- "availability": asking when free/available ("quand libre?", "dispo?", "t occupee?", "when free?", "horaires?", "creneau?")
+- "price_query": asking about prices/rates ("combien?", "tarifs?", "prix?", "how much?", "prices?")
+- "extras_query": asking about extras/options ("tu fais quoi comme extra?", "quels extras?", "tu proposes des extras?", "what extras?", "options?", "wat extras?")
+- "duration_choice": choosing a duration ("1h", "30min", "une heure", "2h", or a number selecting from a list)
+- "slot_selection": choosing a time slot (a number like "3" or time like "14h30", "15h")
+- "booking_confirm": confirming/agreeing to book ("oui", "ok", "d'accord", "dac", "ca marche", "parfait", "yes")
+- "service_type_private": choosing private/incall ("prive", "chez toi", "private", "incall")
+- "service_type_escort": choosing escort/outcall ("escort", "deplacement", "outcall", "chez moi")
+- "cancel_request": wants to cancel ("annule", "cancel", "je peux pas")
+- "address_query": asking where/location ("c'est ou?", "adresse?", "where?", "t'es ou?")
+- "photo_request": asking for photos/videos ("photo", "video", "pic", "image")
+- "reassurance": simple acknowledgment ("ok", "merci", "thanks")
+- "off_topic": unrelated to booking (personal questions, bot nature questions, random chat)`;
+
+    const classifierPrompt = `Classify this WhatsApp message intent for a booking service. Return ONLY valid JSON.
+
+${isPostBooking ? "CONTEXT: Client already has a confirmed booking." : "CONTEXT: Client is in pre-booking conversation."}
+${conversationContext ? `RECENT CONVERSATION:\n${conversationContext}` : ""}
+
+INTENTS:
+${postBookingIntents}
+
+EXAMPLES:
+"cc" → {"intent":"greeting","confidence":0.95,"entities":{}}
+"quand libre?" → {"intent":"availability","confidence":0.95,"entities":{}}
+"t occupee?" → {"intent":"availability","confidence":0.9,"entities":{}}
+"combien?" → {"intent":"price_query","confidence":0.95,"entities":{}}
+"tu fais quoi comme extra?" → {"intent":"extras_query","confidence":0.95,"entities":{}}
+"quels services?" → {"intent":"extras_query","confidence":0.85,"entities":{}}
+"1h" → {"intent":"duration_choice","confidence":0.95,"entities":{"duration":60}}
+"30min" → {"intent":"duration_choice","confidence":0.95,"entities":{"duration":30}}
+"3" → {"intent":"slot_selection","confidence":0.9,"entities":{"slotNumber":3}}
+"14h30" → {"intent":"slot_selection","confidence":0.9,"entities":{"time":"14:30"}}
+"oui" → {"intent":"booking_confirm","confidence":0.85,"entities":{}}
+"prive" → {"intent":"service_type_private","confidence":0.95,"entities":{}}
+"escort" → {"intent":"service_type_escort","confidence":0.95,"entities":{}}
+"je peux pas venir" → {"intent":"cancel_request","confidence":0.9,"entities":{}}
+"oui annuler" → {"intent":"cancel_confirm","confidence":0.95,"entities":{}}
+"c'est ou?" → {"intent":"address_query","confidence":0.95,"entities":{}}
+"jsuis la" → {"intent":"arrival","confidence":0.9,"entities":{}}
+"c quand mon rdv?" → {"intent":"time_query","confidence":0.95,"entities":{}}
+"ok merci" → {"intent":"reassurance","confidence":0.9,"entities":{}}
+"tes un robot?" → {"intent":"off_topic","confidence":0.95,"entities":{}}
+
+MESSAGE (${detectedLanguage}): "${userMessage}"
+
+Return ONLY the JSON object:`;
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: classifierPrompt }],
+        max_tokens: 100,
+        temperature: 0.1,
+      });
+
+      const raw = completion.choices[0]?.message?.content?.trim() || "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const validIntents: IntentType[] = [
+          "greeting", "availability", "price_query", "extras_query",
+          "duration_choice", "slot_selection", "booking_confirm",
+          "service_type_private", "service_type_escort",
+          "cancel_request", "cancel_confirm", "address_query",
+          "reassurance", "arrival", "time_query", "photo_request", "off_topic"
+        ];
+        if (validIntents.includes(parsed.intent)) {
+          return {
+            intent: parsed.intent,
+            confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
+            entities: parsed.entities || {},
+          };
+        }
+      }
+      console.warn("[CLASSIFIER] Invalid GPT response, falling back to regex:", raw);
+      return this.classifyIntentFallback(userMessage, isPostBooking);
+    } catch (error) {
+      console.error("[CLASSIFIER] GPT call failed, falling back to regex:", error);
+      return this.classifyIntentFallback(userMessage, isPostBooking);
+    }
+  }
+
+  private classifyIntentFallback(userMessage: string, isPostBooking: boolean): ClassifiedIntent {
+    const lc = userMessage.toLowerCase().trim();
+
+    if (isPostBooking) {
+      if (/oui annuler|yes cancel|confirme annul/.test(lc)) 
+        return { intent: "cancel_confirm", confidence: 0.9, entities: {} };
+      if (/annuler|cancel|annulation|plus venir|peux pas|peux plus|je viens pas/.test(lc))
+        return { intent: "cancel_request", confidence: 0.85, entities: {} };
+      if (/je suis (la|là)|jsuis (la|là)|arrived|arrivé|arrivee|devant|en bas|ik ben er/.test(lc))
+        return { intent: "arrival", confidence: 0.9, entities: {} };
+      if (/quelle heure|a quelle h|cest quand|quand|when|ce soir|aujourd/.test(lc))
+        return { intent: "time_query", confidence: 0.8, entities: {} };
+      if (this.isAddressQuery(lc))
+        return { intent: "address_query", confidence: 0.9, entities: {} };
+      if (/rdv|reserver|reservation|dispo|creneau|autre heure/.test(lc))
+        return { intent: "booking_confirm", confidence: 0.8, entities: {} };
+      if (/^(ok|oui|d'?accord|dac|merci|mrc|a toute|a \+|allo|hello|hey|cc|coucou|slt|yo|wsh|parfait|super|top|nickel|cool|bien)/.test(lc))
+        return { intent: "reassurance", confidence: 0.8, entities: {} };
+      return { intent: "off_topic", confidence: 0.5, entities: {} };
+    }
+
+    if (/^(cc|coucou|salut|bonjour|bonsoir|hello|hey|hi|slt|yo|wsh|hola|ola)$/i.test(lc))
+      return { intent: "greeting", confidence: 0.95, entities: {} };
+    if (/dispo|libre|available|free|creneau|quand|when|horaire|place|schedule/.test(lc))
+      return { intent: "availability", confidence: 0.85, entities: {} };
+    if (/prix|tarif|combien|coût|cout|coute|price|how much|hoeveel/.test(lc))
+      return { intent: "price_query", confidence: 0.9, entities: {} };
+    if (/extra|supplement|option|bonus|service|prestation|proposez|faites|offrez/.test(lc))
+      return { intent: "extras_query", confidence: 0.85, entities: {} };
+    if (/privé|prive|private|priv|chez toi|incall/.test(lc))
+      return { intent: "service_type_private", confidence: 0.9, entities: {} };
+    if (/escort|escorte|deplacement|outcall|chez moi/.test(lc))
+      return { intent: "service_type_escort", confidence: 0.9, entities: {} };
+    if (/annuler|cancel|annulation/.test(lc))
+      return { intent: "cancel_request", confidence: 0.85, entities: {} };
+    if (this.isAddressQuery(lc))
+      return { intent: "address_query", confidence: 0.9, entities: {} };
+    if (/photo|video|pic|image|foto/.test(lc))
+      return { intent: "photo_request", confidence: 0.85, entities: {} };
+    
+    const durationMatch = lc.match(/(\d+)\s*(?:h|min|hour|heure)/);
+    if (durationMatch) {
+      const num = parseInt(durationMatch[1]);
+      const isMin = /min/.test(durationMatch[0]);
+      return { intent: "duration_choice", confidence: 0.85, entities: { duration: isMin ? num : num * 60 } };
+    }
+    
+    if (/^\d{1,2}$/.test(lc)) {
+      const num = parseInt(lc);
+      return { intent: "slot_selection", confidence: 0.8, entities: { slotNumber: num } };
+    }
+    
+    const timeMatch = lc.match(/(\d{1,2})h(\d{0,2})/);
+    if (timeMatch) {
+      const h = timeMatch[1].padStart(2, "0");
+      const m = (timeMatch[2] || "00").padStart(2, "0");
+      return { intent: "slot_selection", confidence: 0.85, entities: { time: `${h}:${m}` } };
+    }
+
+    if (/^(oui|ok|d'?accord|dac|ca marche|parfait|yes|ja|si|da)$/i.test(lc))
+      return { intent: "booking_confirm", confidence: 0.8, entities: {} };
+    if (/^(merci|mrc|thanks|thx|dank)$/i.test(lc))
+      return { intent: "reassurance", confidence: 0.85, entities: {} };
+
+    return { intent: "off_topic", confidence: 0.5, entities: {} };
   }
 
   // Helper for awayMessageSent key
@@ -417,36 +613,30 @@ class WhatsAppManager {
       return; // Silent ignore if no slot configured
     }
 
-    // POST-BOOKING GATE: Check if client has a confirmed upcoming appointment
     const state = await this.loadState(providerId, clientPhone);
     const nowUtc = new Date();
     
-    // Look for next confirmed appointment for this client - no horizon limit
-    // Uses dedicated method that queries by clientPhone directly, ordered by date, limit 1
     const upcomingAppointment = await storage.getNextClientAppointment(providerId, clientPhone, slotId);
     
-    // Post-booking mode if: has upcoming confirmed appointment OR booked within last 2 hours
     const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
     const recentlyBooked = state.lastBookingAt && state.lastBookingAt > twoHoursAgo;
     const hasUpcomingAppointment = !!upcomingAppointment;
+    const isPostBooking = hasUpcomingAppointment || !!recentlyBooked;
     
-    if (hasUpcomingAppointment || recentlyBooked) {
-      // POST-BOOKING MODE: Bot keeps responding, no more silence
+    const recentHistory = state.chatHistory.slice(-4).map(m => `${m.role}: ${m.content}`).join("\n");
+    
+    const classified = await this.classifyIntent(content, state.detectedLanguage, recentHistory, isPostBooking);
+    console.log(`[CLASSIFIER] intent=${classified.intent} confidence=${classified.confidence} entities=${JSON.stringify(classified.entities)}`);
+    
+    if (isPostBooking) {
       const postBookingResponse = await this.handlePostBookingMessage(
-        providerId, 
-        clientPhone, 
-        content, 
-        state,
-        profile,
-        slotId,
-        upcomingAppointment
+        providerId, clientPhone, content, state, profile, slotId, upcomingAppointment, classified
       );
       await this.sendMessage(providerId, clientPhone, postBookingResponse);
-      console.log("[WA] Post-booking response sent");
       return;
     }
 
-    const response = await this.generateAIResponse(providerId, clientPhone, content, profile, slotId);
+    const response = await this.generateAIResponse(providerId, clientPhone, content, profile, slotId, classified);
     await this.sendMessage(providerId, clientPhone, response);
   }
 
@@ -488,7 +678,6 @@ class WhatsAppManager {
     return false;
   }
 
-  // POST-BOOKING MODE: Respond to messages after a booking is confirmed
   private async handlePostBookingMessage(
     providerId: string,
     clientPhone: string,
@@ -496,13 +685,12 @@ class WhatsAppManager {
     state: ConversationState,
     profile: any,
     slotId: string,
-    upcomingAppointment?: any
+    upcomingAppointment: any | undefined,
+    classified: ClassifiedIntent
   ): Promise<string> {
-    const lowerContent = content.toLowerCase().trim();
     const bookingTime = state.lastBookingTime || "ton rdv";
     const bookingDateStr = state.lastBookingDateStr || "";
     
-    // Get display time from appointment if available, otherwise from state
     let displayTime = bookingDateStr || bookingTime;
     if (upcomingAppointment) {
       const aptTime = formatInTimeZone(new Date(upcomingAppointment.appointmentDate), BRUSSELS_TZ, "HH:mm");
@@ -511,95 +699,88 @@ class WhatsAppManager {
       const isToday = format(aptDate, "yyyy-MM-dd") === format(nowBrussels, "yyyy-MM-dd");
       displayTime = isToday ? `aujourd'hui a ${aptTime}` : `a ${aptTime}`;
     }
-    
-    // Check if it's a time/schedule query about their booking
-    const isTimeQuery = /ce soir|aujourd|maintenant|quelle heure|a quelle h|cest quand|quand/.test(lowerContent);
-    if (isTimeQuery) {
-      return `ton rdv est ${displayTime}. sois a l'heure.`;
-    }
-    
-    // Check if asking for address — use slot's addressApprox/addressExact via getAddressToSend
-    if (this.isAddressQuery(content)) {
-      const nowUtc = new Date();
-      
-      // Fetch slot for address fields
-      const slot = state.lastBookingSlotId ? await storage.getSlot(state.lastBookingSlotId) : null;
-      const approx = slot?.addressApprox || state.lastBookingAddress || null;
-      const exact = slot?.addressExact || null;
-      
-      if (upcomingAppointment) {
-        const aptTime = new Date(upcomingAppointment.appointmentDate);
-        const minutesUntil = (aptTime.getTime() - nowUtc.getTime()) / (1000 * 60);
+
+    switch (classified.intent) {
+      case "time_query":
+        return `ton rdv est ${displayTime}. sois a l'heure.`;
+
+      case "address_query":
+      case "arrival": {
+        const nowUtc = new Date();
+        const slot = state.lastBookingSlotId ? await storage.getSlot(state.lastBookingSlotId) : null;
+        const approx = slot?.addressApprox || state.lastBookingAddress || null;
+        const exact = slot?.addressExact || null;
         
-        if (minutesUntil <= 15) {
-          // T-15: Give exact address (or fallback to approx)
-          const addr = exact || approx;
-          if (addr) {
-            return `c'est ici: ${addr}. google maps. arrive maintenant.`;
+        if (upcomingAppointment) {
+          const aptTime = new Date(upcomingAppointment.appointmentDate);
+          const minutesUntil = (aptTime.getTime() - nowUtc.getTime()) / (1000 * 60);
+          
+          const isArrival = classified.intent === "arrival";
+          
+          if (minutesUntil <= 15 || isArrival) {
+            const addr = exact || approx;
+            if (addr) {
+              return isArrival 
+                ? `ok je t'attends. c'est ici: ${addr}. google maps.`
+                : `c'est ici: ${addr}. google maps. arrive maintenant.`;
+            } else {
+              return `adresse pas configuree. jte l'envoi des que possible.`;
+            }
           } else {
-            return `adresse pas configuree. jte l'envoi des que possible.`;
+            if (approx) {
+              const minutesText = Math.floor(minutesUntil);
+              return `je suis vers ${approx}. le num exact je tenvoi 15min avant. rdv dans ${minutesText}min.`;
+            } else {
+              return `je tenvoi l'adresse 15min avant le rdv. sois pret a l'heure.`;
+            }
           }
         } else {
-          // Before T-15: Only approximate address
           if (approx) {
-            const minutesText = Math.floor(minutesUntil);
-            return `je suis vers ${approx}. le num exact je tenvoi 15min avant. rdv dans ${minutesText}min.`;
+            return `je suis vers ${approx}. l'adresse exacte je tenvoi 15min avant le rdv.`;
           } else {
-            return `je tenvoi l'adresse 15min avant le rdv. sois pret a l'heure.`;
+            return `je tenvoi l'adresse 15min avant le rdv.`;
           }
         }
-      } else {
-        // No appointment found - STRICT: Only approximate, never exact
-        if (approx) {
-          return `je suis vers ${approx}. l'adresse exacte je tenvoi 15min avant le rdv.`;
-        } else {
-          return `je tenvoi l'adresse 15min avant le rdv.`;
+      }
+
+      case "cancel_confirm": {
+        if (upcomingAppointment) {
+          await storage.updateAppointment(upcomingAppointment.id, { status: "cancelled" });
+          await this.persistState(providerId, clientPhone, {
+            ...state,
+            lastBookingAt: null,
+            lastBookingTime: null,
+            lastBookingDateStr: null,
+            lastBookingAddress: null,
+          }, slotId);
+          return `rdv annule. a la prochaine.`;
         }
+        return `pas de rdv a annuler.`;
       }
-    }
-    
-    // Check if trying to book again (FORBIDDEN in post-booking mode)
-    const isNewBookingAttempt = /rdv|reserver|reservation|dispo|creneau|autre heure/.test(lowerContent);
-    if (isNewBookingAttempt) {
-      return `tu as deja un rdv ${displayTime}. viens a l'heure. si tu veux annuler dis le clairement.`;
-    }
-    
-    // Reassurance messages (allo, ok, merci, etc.)
-    const isReassurance = /^(ok|oui|d'?accord|dac|merci|mrc|a toute|a \+|allo|hello|hey|cc|coucou|slt|yo|wsh)/.test(lowerContent);
-    if (isReassurance) {
-      const reassurances = [
-        `j'ai bien recu. ton rdv est ${displayTime}. a toute.`,
-        `c'est note. rdv ${displayTime}. sois a l'heure.`,
-        `ok parfait. on se voit ${displayTime}.`,
-      ];
-      return reassurances[Math.floor(Math.random() * reassurances.length)];
-    }
-    
-    // Cancel request detection
-    const isCancelRequest = /annuler|cancel|annulation|plus venir|peux pas/.test(lowerContent);
-    if (isCancelRequest) {
-      return `tu veux annuler ton rdv de ${displayTime}? reponds "oui annuler" pour confirmer.`;
-    }
-    
-    // Explicit cancel confirmation
-    if (/oui annuler/.test(lowerContent)) {
-      // Cancel the appointment (use passed-in appointment if available)
-      if (upcomingAppointment) {
-        await storage.updateAppointment(upcomingAppointment.id, { status: "cancelled" });
-        // Clear the post-booking state
-        await this.persistState(providerId, clientPhone, {
-          ...state,
-          lastBookingAt: null,
-          lastBookingTime: null,
-          lastBookingDateStr: null,
-          lastBookingAddress: null,
-        }, slotId);
-        return `rdv annule. a la prochaine.`;
+
+      case "cancel_request":
+        return `tu veux annuler ton rdv de ${displayTime}? reponds "oui annuler" pour confirmer.`;
+
+      case "booking_confirm":
+        return `tu as deja un rdv ${displayTime}. viens a l'heure. si tu veux annuler dis le clairement.`;
+
+      case "reassurance":
+      case "greeting": {
+        const reassurances = [
+          `j'ai bien recu. ton rdv est ${displayTime}. a toute.`,
+          `c'est note. rdv ${displayTime}. sois a l'heure.`,
+          `ok parfait. on se voit ${displayTime}.`,
+        ];
+        return reassurances[Math.floor(Math.random() * reassurances.length)];
       }
+
+      case "price_query":
+      case "extras_query":
+        return `tu as deja un rdv ${displayTime}. on voit tout ca a ce moment la. sois a l'heure.`;
+
+      default:
+        return `j'ai bien recu ton message. ton rdv est confirme ${displayTime}. sois a l'heure.`;
     }
-    
-    // Default: Acknowledge their booking is confirmed
-    return `j'ai bien recu ton message. ton rdv est confirme ${displayTime}. sois a l'heure.`;
   }
 
   private isGreeting(content: string): boolean {
@@ -765,12 +946,11 @@ class WhatsAppManager {
     clientPhone: string,
     userMessage: string,
     profile: any,
-    slotId: string | null = null
+    slotId: string | null = null,
+    classified?: ClassifiedIntent
   ): Promise<string> {
-    // DB SINGLE SOURCE OF TRUTH: Load state from database
     let convState = await this.loadState(providerId, clientPhone);
     
-    // SLOT-AWARE: Fetch slot data for customInstructions/address with provider fallback
     let slot: any = null;
     if (slotId) {
       slot = await storage.getSlot(slotId);
@@ -779,8 +959,6 @@ class WhatsAppManager {
     const effectiveAddressApprox = slot?.addressApprox || profile.address || null;
     const effectiveAddressExact = slot?.addressExact || null;
     
-    // SYNCHRONISATION TEMPS RÉEL: Récupération FRAÎCHE des données à chaque message
-    // V1 STRICT: All storage reads are slot-scoped
     if (!slotId) {
       console.error("[WA-AI] slotId required for generateAIResponse");
       return "desole, erreur technique. reessaie plus tard.";
@@ -791,81 +969,204 @@ class WhatsAppManager {
     const businessHours = await storage.getBusinessHours(providerId, slotId);
     const services = await storage.getServices(providerId);
     
-    // Get available slots for deterministic checks
     const nowBrussels = toZonedTime(new Date(), BRUSSELS_TZ);
     const today = nowBrussels;
     const tomorrow = addDays(today, 1);
     const todaySlots = await this.getAvailableSlots(providerId, today, businessHours, slotId);
     const tomorrowSlots = await this.getAvailableSlots(providerId, tomorrow, businessHours, slotId);
     
-    const lowerUserMessage = userMessage.toLowerCase();
+    const intent = classified?.intent || "off_topic";
+    const confidence = classified?.confidence || 0;
     
-    // PRE-LLM GUARDS: Handle deterministic responses before calling OpenAI
-    
-    // GUARD 1: "ce soir" / "aujourd'hui" when today is full
-    const isTodayRequest = /ce soir|aujourdhui|aujourd'hui|maintenant|tout de suite/.test(lowerUserMessage);
     const isTodayFull = todaySlots.length === 0;
-    const hasTomorrowSlots = tomorrowSlots.length > 0;
     const isTomorrowFull = tomorrowSlots.length === 0;
+    const hasTomorrowSlots = tomorrowSlots.length > 0;
+
+    // === HARD GUARDS (run BEFORE intent routing, regardless of classified intent) ===
     
+    // GUARD: "ce soir" / "aujourd'hui" when today is full
+    const lowerUserMessage = userMessage.toLowerCase();
+    const isTodayRequest = /ce soir|aujourdhui|aujourd'hui|maintenant|tout de suite/.test(lowerUserMessage);
     if (isTodayRequest && isTodayFull) {
       let response: string;
       if (hasTomorrowSlots) {
-        // Today full, tomorrow available
         response = `plus de dispo aujourd'hui. je suis libre demain. tu veux voir les horaires?`;
       } else {
-        // Both today and tomorrow full
         response = `desole je suis complete aujourd'hui et demain. contacte moi dans quelques jours.`;
       }
       convState.chatHistory.push({ role: "user", content: userMessage });
       convState.chatHistory.push({ role: "assistant", content: response });
-      await this.persistState(providerId, clientPhone, { ...convState, offTopicCount: 0 }, slotId);
+      convState.offTopicCount = 0;
+      await this.persistState(providerId, clientPhone, convState, slotId);
       return this.censorText(response);
     }
+
+    // === DETERMINISTIC INTENT ROUTING — handle intents that don't need GPT ===
     
-    // GUARD 1b: General "no slots" when both today and tomorrow full (for dispo requests)
-    const isDispoRequest = /dispo|creneau|quand|horaire/.test(lowerUserMessage);
-    if (isDispoRequest && isTodayFull && isTomorrowFull) {
-      const response = `desole je suis complete pour les prochains jours. recontacte moi plus tard.`;
+    // EXTRAS: Always deterministic from DB, never GPT-generated
+    if (intent === "extras_query") {
+      const response = await this.generateExtrasList(providerId, clientPhone, slotId);
+      const disclaimer = "\nuniquement ce qui est liste. si c'est pas indique, je ne le fais pas.";
+      const fullResponse = response + disclaimer;
+      convState.chatHistory.push({ role: "user", content: userMessage });
+      convState.chatHistory.push({ role: "assistant", content: fullResponse });
+      convState.offTopicCount = 0;
+      await this.persistState(providerId, clientPhone, convState, slotId);
+      return this.censorText(fullResponse);
+    }
+    
+    // PRICE: Deterministic price list
+    if (intent === "price_query") {
+      const response = await this.generatePriceList(providerId, slotId);
       convState.chatHistory.push({ role: "user", content: userMessage });
       convState.chatHistory.push({ role: "assistant", content: response });
-      await this.persistState(providerId, clientPhone, { ...convState, offTopicCount: 0 }, slotId);
+      convState.offTopicCount = 0;
+      await this.persistState(providerId, clientPhone, convState, slotId);
       return this.censorText(response);
     }
     
-    // GUARD 2: Off-topic detection and progressive guardrails
-    // Off-topic = explicitly off-topic OR (not on-topic AND message length > 3 chars)
-    const isOnTopic = this.isOnTopicMessage(userMessage);
-    const isExplicitlyOff = this.isExplicitlyOffTopic(userMessage);
-    const isUnknownIntent = !isOnTopic && userMessage.trim().length > 3;
-    
-    if (isExplicitlyOff || isUnknownIntent) {
-      convState.offTopicCount = (convState.offTopicCount || 0) + 1;
-      
-      let response: string;
-      if (convState.offTopicCount <= 2) {
-        // Soft redirect
-        response = "dis moi juste la duree ou l'heure que tu veux";
-      } else {
-        // Firm redirect after 3+ off-topic messages
-        response = "tu veux reserver un rdv ?";
+    // AVAILABILITY: Deterministic slot display
+    if (intent === "availability") {
+      if (isTodayFull && isTomorrowFull) {
+        const response = `desole je suis complete pour les prochains jours. recontacte moi plus tard.`;
+        convState.chatHistory.push({ role: "user", content: userMessage });
+        convState.chatHistory.push({ role: "assistant", content: response });
+        convState.offTopicCount = 0;
+        await this.persistState(providerId, clientPhone, convState, slotId);
+        return response;
       }
-      
+      const response = await this.generateAvailableSlots(providerId, clientPhone, services, businessHours);
+      convState.chatHistory.push({ role: "user", content: userMessage });
+      convState.chatHistory.push({ role: "assistant", content: response });
+      convState.offTopicCount = 0;
+      await this.persistState(providerId, clientPhone, convState, slotId);
+      return response;
+    }
+    
+    // SERVICE TYPE: Deterministic routing
+    if (intent === "service_type_private") {
+      convState.type = "private";
+      convState.offTopicCount = 0;
+      await this.persistState(providerId, clientPhone, convState, slotId);
+      const response = await this.generateDurationOptions(providerId, clientPhone, "private", slotId);
       convState.chatHistory.push({ role: "user", content: userMessage });
       convState.chatHistory.push({ role: "assistant", content: response });
       await this.persistState(providerId, clientPhone, convState, slotId);
       return response;
-    } else if (isOnTopic) {
-      // Reset off-topic counter on relevant messages
-      if (convState.offTopicCount > 0) {
-        convState.offTopicCount = 0;
-        await this.persistState(providerId, clientPhone, convState, slotId);
-      }
+    }
+    if (intent === "service_type_escort") {
+      convState.type = "escort";
+      convState.offTopicCount = 0;
+      await this.persistState(providerId, clientPhone, convState, slotId);
+      const response = await this.generateDurationOptions(providerId, clientPhone, "escort", slotId);
+      convState.chatHistory.push({ role: "user", content: userMessage });
+      convState.chatHistory.push({ role: "assistant", content: response });
+      await this.persistState(providerId, clientPhone, convState, slotId);
+      return response;
     }
     
-    console.log(`[DYNAMIQUE] Données fraîches récupérées pour le prestataire ${providerId}. Envoi de la réponse...`);
+    // DURATION CHOICE: Deterministic if type is already selected
+    if (intent === "duration_choice" && convState.type) {
+      const response = await this.handleDurationChoice(providerId, clientPhone, userMessage, convState.type, slotId);
+      convState = await this.loadState(providerId, clientPhone);
+      convState.chatHistory.push({ role: "user", content: userMessage });
+      convState.chatHistory.push({ role: "assistant", content: response });
+      convState.offTopicCount = 0;
+      await this.persistState(providerId, clientPhone, convState, slotId);
+      return response;
+    }
     
-    // Note: todaySlots and tomorrowSlots already fetched above for PRE-LLM guards
+    // SLOT SELECTION: Deterministic validation + direct booking creation
+    if (intent === "slot_selection") {
+      const slotNum = classified?.entities?.slotNumber;
+      const slotTime = classified?.entities?.time;
+      
+      let resolvedTime: string | null = null;
+      let isTomorrowBooking = false;
+      
+      if (slotNum && convState.slotMapping && convState.slotMapping[slotNum]) {
+        const mappedSlot = convState.slotMapping[slotNum];
+        isTomorrowBooking = mappedSlot.startsWith("DEMAIN:");
+        resolvedTime = isTomorrowBooking ? mappedSlot.replace("DEMAIN:", "") : mappedSlot;
+      } else if (slotTime) {
+        if (todaySlots.includes(slotTime)) {
+          resolvedTime = slotTime;
+          isTomorrowBooking = false;
+        } else if (tomorrowSlots.includes(slotTime)) {
+          resolvedTime = slotTime;
+          isTomorrowBooking = true;
+        } else {
+          const altSlots = todaySlots.length > 0 ? todaySlots.slice(0, 4) : tomorrowSlots.slice(0, 4);
+          const response = altSlots.length > 0
+            ? `desole ${slotTime} est pas dispo. voici ce qui reste: ${altSlots.join(", ")}`
+            : `desole plus de dispo. recontacte moi plus tard.`;
+          convState.chatHistory.push({ role: "user", content: userMessage });
+          convState.chatHistory.push({ role: "assistant", content: response });
+          convState.offTopicCount = 0;
+          await this.persistState(providerId, clientPhone, convState, slotId);
+          return response;
+        }
+      }
+      
+      if (resolvedTime) {
+        return await this.createBookingDeterministic(
+          providerId, clientPhone, resolvedTime, isTomorrowBooking,
+          convState, profile, slotId, services, businessHours,
+          effectiveAddressApprox
+        );
+      }
+      // If no valid mapping found, fall through to GPT for natural handling
+    }
+    
+    // PHOTO REQUEST: Deterministic redirect
+    if (intent === "photo_request") {
+      const externalUrl = profile.externalProfileUrl || "";
+      const response = externalUrl 
+        ? `regarde ici: ${externalUrl}. tu veux rdv?`
+        : `pas de photos dispo. tu veux reserver un rdv?`;
+      convState.chatHistory.push({ role: "user", content: userMessage });
+      convState.chatHistory.push({ role: "assistant", content: response });
+      convState.offTopicCount = 0;
+      await this.persistState(providerId, clientPhone, convState, slotId);
+      return response;
+    }
+    
+    // ADDRESS QUERY: Deterministic with T-15 rule (pre-booking = approx only)
+    if (intent === "address_query") {
+      const addr = effectiveAddressApprox;
+      const response = addr
+        ? `je suis vers ${addr}. l'adresse exacte je tenvoi 15min avant le rdv. tu veux reserver?`
+        : `je tenvoi l'adresse apres confirmation du rdv. tu veux reserver?`;
+      convState.chatHistory.push({ role: "user", content: userMessage });
+      convState.chatHistory.push({ role: "assistant", content: response });
+      convState.offTopicCount = 0;
+      await this.persistState(providerId, clientPhone, convState, slotId);
+      return response;
+    }
+    
+    // OFF-TOPIC: Progressive guardrails (deterministic)
+    if (intent === "off_topic" && confidence >= 0.7) {
+      convState.offTopicCount = (convState.offTopicCount || 0) + 1;
+      let response: string;
+      if (convState.offTopicCount <= 2) {
+        response = "dis moi juste la duree ou l'heure que tu veux";
+      } else {
+        response = "tu veux reserver un rdv ?";
+      }
+      convState.chatHistory.push({ role: "user", content: userMessage });
+      convState.chatHistory.push({ role: "assistant", content: response });
+      await this.persistState(providerId, clientPhone, convState, slotId);
+      return response;
+    }
+    
+    // Reset off-topic counter for on-topic intents
+    if (intent !== "off_topic" && convState.offTopicCount > 0) {
+      convState.offTopicCount = 0;
+    }
+    
+    // === GPT RESPONSE GENERATOR ===
+    // For intents that need natural text: greeting, booking_confirm, slot_selection, 
+    // reassurance, low-confidence, and general conversation flow
     
     const activePrices = basePrices.filter(p => p.active);
     const activeExtras = serviceExtras.filter(e => e.active);
@@ -874,45 +1175,6 @@ class WhatsAppManager {
     const durationLabels: Record<number, string> = {
       15: "15min", 30: "30min", 45: "45min", 60: "1h", 90: "1h30", 120: "2h"
     };
-    
-    let priceContext = "TARIFS:\n";
-    priceContext += "chez moi (prive):\n";
-    activePrices.forEach((p, i) => {
-      const label = durationLabels[p.duration] || `${p.duration}min`;
-      const price = p.pricePrivate ? p.pricePrivate / 100 : 0;
-      priceContext += `${i + 1}. ${label}: ${price}e\n`;
-    });
-    priceContext += "\ndeplacement (escort, min 1h):\n";
-    activePrices.filter(p => p.duration >= 60).forEach((p, i) => {
-      const label = durationLabels[p.duration] || `${p.duration}min`;
-      const price = p.priceEscort ? p.priceEscort / 100 : 0;
-      priceContext += `${i + 1}. ${label}: ${price}e\n`;
-    });
-    
-    let extrasContext = "\nEXTRAS DISPONIBLES:\n";
-    let extraIndex = 1;
-    activeExtras.forEach(e => {
-      const price = e.price ? e.price / 100 : 0;
-      extrasContext += `${extraIndex}. ${e.extraType}: +${price}e\n`;
-      extraIndex++;
-    });
-    activeCustom.forEach(e => {
-      const price = e.price ? e.price / 100 : 0;
-      extrasContext += `${extraIndex}. ${e.name}: +${price}e\n`;
-      extraIndex++;
-    });
-    
-    let availContext = "\nDISPONIBILITES:\n";
-    if (todaySlots.length > 0) {
-      availContext += `Aujourd'hui: ${todaySlots.join(", ")}\n`;
-    } else {
-      availContext += "Aujourd'hui: complet\n";
-    }
-    if (tomorrowSlots.length > 0) {
-      availContext += `Demain (${format(tomorrow, "EEEE d", { locale: fr })}): ${tomorrowSlots.join(", ")}\n`;
-    } else {
-      availContext += `Demain: complet\n`;
-    }
     
     let stateContext = "";
     if (convState.type || convState.duration) {
@@ -926,36 +1188,31 @@ class WhatsAppManager {
       }
     }
     
-    // SLOT-AWARE: Use effective custom instructions (slot > provider > empty)
     const customInstructions = effectiveCustomInstructions || "";
     const providerName = slot?.name || profile.businessName || "la prestataire";
-    
-    // GRILLE TARIFAIRE UNIFIÉE (base + extras fusionnés)
     const fullPriceList = this.getFormattedPriceList(activePrices, activeExtras, activeCustom);
     
-    // Liste des créneaux numérotés + SLOT MAPPING pour persistance
     let numberedSlots = "";
     const slotMapping: Record<number, string> = {};
     
     if (todaySlots.length > 0) {
       numberedSlots += "AUJOURD'HUI:\n";
-      todaySlots.forEach((slot, i) => {
+      todaySlots.forEach((s, i) => {
         const num = i + 1;
-        numberedSlots += `${num}. ${slot}\n`;
-        slotMapping[num] = slot; // Stocke "1" -> "09:00"
+        numberedSlots += `${num}. ${s}\n`;
+        slotMapping[num] = s;
       });
     }
     if (tomorrowSlots.length > 0) {
       const offset = todaySlots.length;
       numberedSlots += `\nDEMAIN (${format(tomorrow, "EEEE d", { locale: fr })}):\n`;
-      tomorrowSlots.forEach((slot, i) => {
+      tomorrowSlots.forEach((s, i) => {
         const num = offset + i + 1;
-        numberedSlots += `${num}. ${slot}\n`;
-        slotMapping[num] = `DEMAIN:${slot}`; // Stocke "18" -> "DEMAIN:09:00"
+        numberedSlots += `${num}. ${s}\n`;
+        slotMapping[num] = `DEMAIN:${s}`;
       });
     }
     
-    // Persister le slotMapping en base de données (DB SINGLE SOURCE OF TRUTH)
     try {
       convState = await this.persistState(providerId, clientPhone, { ...convState, slotMapping }, slotId);
     } catch (dbError) {
@@ -964,27 +1221,23 @@ class WhatsAppManager {
     }
     
     const externalUrl = profile.externalProfileUrl || "";
-    
-    // Progressive guardrail context
-    const offTopicContext = convState.offTopicCount > 0 ? `\nCOMPTEUR HORS-SUJET: ${convState.offTopicCount}/4` : "";
-    
-    // Better availability context for "ce soir" handling
     const todayFull = todaySlots.length === 0;
     const tomorrowAvailable = tomorrowSlots.length > 0;
     const ceSoirContext = todayFull && tomorrowAvailable 
       ? `\nSI CLIENT DIT "ce soir" ou "aujourd'hui": Reponds "plus de dispo aujourd'hui. je suis libre demain. tu veux voir les horaires?"` 
       : "";
     
+    const intentHint = intent !== "off_topic" 
+      ? `\nINTENT DETECTE: ${intent} (guide ta reponse vers cet objectif)`
+      : "";
+    
     const systemPrompt = `Tu es ${providerName}, un bot de reservation sur whatsapp. Tu es ferme mais humain.
 
-MISSION: Vendre un service et prendre un RDV. Reste focuse sur ca.
+MISSION: Vendre un service et prendre un RDV. Reste focuse sur ca.${intentHint}
 
-HORS-SUJET (GUARDRAILS PROGRESSIFS):
-Si le client pose des questions hors-sujet (robot? technique? perso?):
-- 1ere ou 2eme fois: Ignore et continue le tunnel, ou reponds "dis moi juste la duree ou l'heure que tu veux"
-- 3eme ou 4eme fois: "tu veux reserver un rdv ?"
-- Ne dis JAMAIS "on est la pour un rdv. tu veux reserver ou pas?"
-INTERDICTION de parler de ta nature de bot.${offTopicContext}
+HORS-SUJET:
+Si le client pose des questions hors-sujet: redirige vers la reservation.
+INTERDICTION de parler de ta nature de bot.
 
 ${externalUrl ? `REDIRECTION PHOTOS/VIDEOS:
 Si le client demande des photos/videos: "regarde ici: ${externalUrl}. tu veux rdv?"
@@ -1206,6 +1459,105 @@ Reponds au dernier message.`;
     } catch (error) {
       console.error("[WA-AI] Error generating AI response:", error);
       return "desole y'a eu un souci, reessaie stp";
+    }
+  }
+
+  private async createBookingDeterministic(
+    providerId: string,
+    clientPhone: string,
+    timeStr: string,
+    isTomorrow: boolean,
+    convState: ConversationState,
+    profile: any,
+    slotId: string,
+    services: any[],
+    businessHours: any[],
+    effectiveAddressApprox: string | null
+  ): Promise<string> {
+    const [hourStr, minuteStr] = timeStr.split(":");
+    const hour = parseInt(hourStr);
+    const minute = parseInt(minuteStr);
+    
+    const nowUtc = new Date();
+    const nowBrusselsBooking = toZonedTime(nowUtc, BRUSSELS_TZ);
+    const targetBrusselsDate = isTomorrow ? addDays(nowBrusselsBooking, 1) : nowBrusselsBooking;
+    const brusselsDateStr = formatInTimeZone(targetBrusselsDate, BRUSSELS_TZ, "yyyy-MM-dd");
+    const appointmentDate = fromZonedTime(`${brusselsDateStr} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`, BRUSSELS_TZ);
+    
+    if (appointmentDate <= nowUtc) {
+      return "desole ce creneau est deja passe, choisis une autre heure stp";
+    }
+    
+    const availableSlots = await this.getAvailableSlots(providerId, targetBrusselsDate, businessHours, slotId);
+    const requestedTime = formatInTimeZone(appointmentDate, BRUSSELS_TZ, "HH:mm");
+    
+    if (!availableSlots.includes(requestedTime)) {
+      if (availableSlots.length === 0) {
+        return `desole plus de creneau ${isTomorrow ? "demain" : "aujourd'hui"}. recontacte moi plus tard.`;
+      }
+      return `desole ${requestedTime} n'est plus dispo. voici ce qui reste: ${availableSlots.slice(0, 4).join(", ")}`;
+    }
+    
+    const activeServices = services.filter(s => s.active);
+    let selectedServiceId = convState.serviceId;
+    if (!selectedServiceId && activeServices.length > 0) {
+      const service1h = activeServices.find(s => s.duration === 60);
+      selectedServiceId = (service1h || activeServices[0]).id;
+    }
+    const selectedService = activeServices.find(s => s.id === selectedServiceId) || activeServices[0];
+    
+    try {
+      const noteText = [
+        convState.type ? `Type: ${convState.type}` : "",
+        convState.extras.length > 0 ? `Extras: ${convState.extras.join(", ")}` : "",
+      ].filter(Boolean).join(". ");
+      
+      await storage.createAppointment({
+        providerId,
+        slotId,
+        serviceId: selectedService?.id || null,
+        clientPhone,
+        clientName: "",
+        appointmentDate,
+        duration: convState.duration || selectedService?.duration || 60,
+        status: "confirmed",
+        notes: noteText || "RDV automatique",
+      });
+      
+      const bookedTime = formatInTimeZone(appointmentDate, BRUSSELS_TZ, "HH:mm");
+      const bookingDateStr = isTomorrow ? `demain a ${bookedTime}` : `aujourd'hui a ${bookedTime}`;
+      
+      let aiResponse: string;
+      if (effectiveAddressApprox) {
+        aiResponse = `ok c confirmer pour ${bookedTime}. je suis ${effectiveAddressApprox}. regarde sur google maps. je tenvoi le num exact 15min avant. sois la.`;
+      } else {
+        aiResponse = `ok c confirmer pour ${bookedTime}. adresse pas configuree dans mon dashboard. jte l'envoi des que possible. sois a l'heure.`;
+      }
+      
+      convState.chatHistory.push({ role: "user", content: `${timeStr}` });
+      convState.chatHistory.push({ role: "assistant", content: aiResponse });
+      
+      await this.persistState(providerId, clientPhone, {
+        ...convState,
+        type: null,
+        duration: null,
+        basePrice: 0,
+        extras: [],
+        extrasTotal: 0,
+        slotMapping: {},
+        offTopicCount: 0,
+        lastBookingAt: Date.now(),
+        lastBookingAddress: effectiveAddressApprox,
+        lastBookingSlotId: slotId,
+        lastBookingTime: bookedTime,
+        lastBookingDateStr: bookingDateStr,
+      }, slotId);
+      
+      console.log(`[WA-DETERMINISTIC] Created appointment for ${clientPhone} at ${bookedTime}, slotId=${slotId}`);
+      return this.censorText(aiResponse);
+    } catch (error) {
+      console.error("[WA-DETERMINISTIC] Error creating appointment:", error);
+      return "desole y'a eu un bug, reessaie stp";
     }
   }
 
