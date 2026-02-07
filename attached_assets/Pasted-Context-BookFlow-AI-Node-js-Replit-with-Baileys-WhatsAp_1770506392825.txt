@@ -1,0 +1,24 @@
+Context: BookFlow-AI Node.js/Replit with Baileys WhatsApp handler, GPT-4o-mini, conversationSessions state, detectedLanguage. Validated hybrid plan: lightweight GPT intent classifier (JSON) on every message → deterministic switch → response generator. Extras: deterministic DB list + "uniquement ce qui est listé, si pas indiqué je ne le pratique pas" (no sensitive slang examples).
+
+Objective: Implement full hybrid bot with safe few-shot classifier, deterministic extras/post-booking, multilingue support.
+
+Constraints: 
+- GPT-4o-mini structured JSON classifier cheap.
+- Leverage detectedLanguage for examples/responses.
+- Deterministic extras from DB slot.
+- Fallback regex low confidence.
+
+Required Output: 
+- Classifier GPT prompt with safe light few-shot multilingue (extras "tu fais quoi comme extra?", "quels services?", "what extras?", "wat extras?"; availability "quand libre?", "dispo quand?", "when free?"; cancel "je peux pas", "annule", "can't come"; no slang).
+- Updated handler: Classifier call first (JSON {intent, confidence >0.7, entities: duration/time}); switch deterministic (extras → DB list + custom message; availability → slots; cancel → robust confirm).
+- Post-booking: Classifier routing (reassurance/arrived/cancel/address).
+- Response generator: Natural text targeted intent.
+- Code snippets: Classifier prompt, handler switch, extras deterministic, fallback low confidence "reformule stp".
+
+Priority: Reliability + security MVP speed – sequential testable.
+
+Special Instructions:
+- Sequential/testable: 1. Classifier prompt + few-shot safe multilingue, 2. Handler switch + extras DB deterministic/custom message, 3. Post-booking/cancel fixes, 4. Generator + test variations, 5. Fallback + low confidence handling.
+- Error handling: Fallback regex <0.7 confidence, log misses.
+- Simplest first: JSON simple, few-shot light safe.
+- Project memory: detectedLanguage persisted, address split recent, rigid regex current, extras DB configured safe, goal push booking natural.

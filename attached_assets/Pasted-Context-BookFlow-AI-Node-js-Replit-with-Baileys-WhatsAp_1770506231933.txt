@@ -1,0 +1,25 @@
+Context: BookFlow-AI Node.js/Replit with Baileys WhatsApp handler, GPT-4o-mini, conversationSessions state, detectedLanguage. Validated hybrid plan: GPT intent classifier (structured JSON) on every message → deterministic state machine → GPT response generator if needed. Real tests show rigid loops, poor paraphrases. For extras/services: respond deterministically from DB configured extras (list + "uniquement ce qui est listé, si pas indiqué je ne le pratique pas") – no teach sensitive slang.
+
+Objective: Implement full hybrid bot with light few-shot for intents (focus extras variations safe), deterministic extras response from DB.
+
+Constraints: 
+- GPT-4o-mini, structured JSON classifier.
+- Leverage detectedLanguage multilingue.
+- Keep existing generator prompt.
+- Fallback regex if classifier fail.
+- Extras sensitive: deterministic DB list only, no slang examples.
+
+Required Output: 
+- Classifier GPT prompt with light few-shot (extras safe variations: "tu fais quoi comme extra?", "tu proposes des extras?", "quels services?", "what extras?" – no slang like CIP/COF/NZC).
+- Updated handler: Classifier call first (JSON {intent, confidence, entities}); switch deterministic (extras → list DB extras + "uniquement listé, si pas indiqué non").
+- State machine fixes: Availability → show slots; duration → confirm; cancel → robust; post-booking reassurance/arrived.
+- Response generation: Natural text, deterministic for extras.
+- Code snippets: Classifier prompt (safe examples), handler intent switch (extras DB), state transitions.
+
+Priority: Reliability + security MVP speed – sequential testable, deterministic extras safe.
+
+Special Instructions:
+- Sequential/testable: 1. Classifier prompt + safe few-shot, 2. Handler switch + extras DB deterministic, 3. Generator + test variations, 4. Fallback/post-booking fixes.
+- Error handling: Fallback regex, "je ne comprends pas, reformule" low confidence.
+- Simplest first: JSON simple, few-shot light (no sensitive slang), extras from DB slot.
+- Project memory: detectedLanguage, address split recent, rigid regex current, extras DB configured, goal push booking.
