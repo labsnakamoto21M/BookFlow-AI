@@ -1,0 +1,29 @@
+Context: BookFlow-AI Node.js/Replit full-stack TypeScript with Stripe test mode. Current pricing in server/stripe-plans.ts (old prices 49/79/99/149/229, "ELITE") and client/src/pages/landing.tsx PLANS array. 5 Stripe price IDs monthly (least to most): price_1SxxDYBoDKI3q4PbzRHsjxmJ (Solo 1 slot 59€), price_1SxxELBoDKI3q4PbFOKwC0gB (Duo 2 slots 99€), price_1SxxElBoDKI3q4PbDnbk2YEM (Trio 3 slots 129€), price_1SxxG6BoDKI3q4PbcD5NnJqW (Hexa 6 slots 199€), price_1SxxH1BoDKI3q4PbUTvlIF2k (Agency 15 slots 299€).
+
+Objective: Implement pricing update: store IDs in secrets list, update backend/UI with new titles/prices.
+
+Constraints: 
+- Replit secrets env vars (user add manual).
+- Test mode Stripe.
+- No new checkout logic.
+- Stack: TypeScript client/server.
+
+Required Output: 
+- Explicit Replit secrets list + add instructions:
+  STRIPE_PRICE_SOLO = price_1SxxDYBoDKI3q4PbzRHsjxmJ
+  STRIPE_PRICE_DUO = price_1SxxELBoDKI3q4PbFOKwC0gB
+  STRIPE_PRICE_TRIO = price_1SxxElBoDKI3q4PbDnbk2YEM
+  STRIPE_PRICE_HEXA = price_1SxxG6BoDKI3q4PbcD5NnJqW
+  STRIPE_PRICE_AGENCY = price_1SxxH1BoDKI3q4PbUTvlIF2k
+- Updated server/stripe-plans.ts: titles "Solo (1 WhatsApp number)", "Duo (2)", "Trio (3)", "Hexa (6)", "Agency (15)"; prices 59/99/129/199/299€; reference env price IDs; config array/object (tiers, slots max, price ID env).
+- Updated client/src/pages/landing.tsx PLANS array: matching titles/prices/slots max.
+- Fallback hardcode if env missing.
+- Manual test instructions: Access homepage/landing, verify pricing display correct.
+
+Priority: Speed + simplicity MVP – secrets list + updates testable quick.
+
+Special Instructions:
+- Sequential/testable: 1. Secrets list + add instructions, 2. Backend stripe-plans.ts update + config array, 3. UI landing.tsx PLANS update, 4. Test display.
+- Error handling: Fallback hardcode prices/env missing.
+- Simplest first: Hardcode prices UI temp, reference env backend.
+- Project memory: address split recent, hybrid bot in progress, pricing tiers Solo/Duo/Trio/Hexa/Agency.
