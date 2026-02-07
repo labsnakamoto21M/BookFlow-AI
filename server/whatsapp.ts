@@ -518,42 +518,40 @@ class WhatsAppManager {
       return `ton rdv est ${displayTime}. sois a l'heure.`;
     }
     
-    // Check if asking for address
+    // Check if asking for address — use slot's addressApprox/addressExact via getAddressToSend
     if (this.isAddressQuery(content)) {
-      // Calculate time until appointment for T-15 rule
       const nowUtc = new Date();
+      
+      // Fetch slot for address fields
+      const slot = state.lastBookingSlotId ? await storage.getSlot(state.lastBookingSlotId) : null;
+      const approx = slot?.addressApprox || state.lastBookingAddress || null;
+      const exact = slot?.addressExact || null;
       
       if (upcomingAppointment) {
         const aptTime = new Date(upcomingAppointment.appointmentDate);
         const minutesUntil = (aptTime.getTime() - nowUtc.getTime()) / (1000 * 60);
         
         if (minutesUntil <= 15) {
-          // T-15: Give full address
-          if (state.lastBookingAddress && state.lastBookingAddress.trim()) {
-            return `c'est ici: ${state.lastBookingAddress}. google maps. arrive maintenant.`;
+          // T-15: Give exact address (or fallback to approx)
+          const addr = exact || approx;
+          if (addr) {
+            return `c'est ici: ${addr}. google maps. arrive maintenant.`;
           } else {
             return `adresse pas configuree. jte l'envoi des que possible.`;
           }
         } else {
-          // Before T-15: Only street info or timing explanation
-          if (state.lastBookingAddress && state.lastBookingAddress.trim()) {
-            // Extract just street name if possible
-            const streetMatch = state.lastBookingAddress.match(/^[^,\d]+/);
-            const streetOnly = streetMatch ? streetMatch[0].trim() : "le quartier";
+          // Before T-15: Only approximate address
+          if (approx) {
             const minutesText = Math.floor(minutesUntil);
-            return `je suis vers ${streetOnly}. le num exact je tenvoi 15min avant. rdv dans ${minutesText}min.`;
+            return `je suis vers ${approx}. le num exact je tenvoi 15min avant. rdv dans ${minutesText}min.`;
           } else {
             return `je tenvoi l'adresse 15min avant le rdv. sois pret a l'heure.`;
           }
         }
       } else {
-        // No appointment found - STRICT: Never give full address without appointment context
-        // This enforces T-15 rule: address only revealed 15 min before
-        if (state.lastBookingAddress && state.lastBookingAddress.trim()) {
-          // Extract just street name
-          const streetMatch = state.lastBookingAddress.match(/^[^,\d]+/);
-          const streetOnly = streetMatch ? streetMatch[0].trim() : "le quartier";
-          return `je suis vers ${streetOnly}. l'adresse exacte je tenvoi 15min avant le rdv.`;
+        // No appointment found - STRICT: Only approximate, never exact
+        if (approx) {
+          return `je suis vers ${approx}. l'adresse exacte je tenvoi 15min avant le rdv.`;
         } else {
           return `je tenvoi l'adresse 15min avant le rdv.`;
         }
@@ -778,7 +776,8 @@ class WhatsAppManager {
       slot = await storage.getSlot(slotId);
     }
     const effectiveCustomInstructions = slot?.customInstructions || profile.customInstructions || null;
-    const effectiveAddress = slot?.address || profile.address || null;
+    const effectiveAddressApprox = slot?.addressApprox || profile.address || null;
+    const effectiveAddressExact = slot?.addressExact || null;
     
     // SYNCHRONISATION TEMPS RÉEL: Récupération FRAÎCHE des données à chaque message
     // V1 STRICT: All storage reads are slot-scoped
@@ -1150,9 +1149,9 @@ Reponds au dernier message.`;
                 
                 console.log(`[WA-AI] Created appointment for ${clientPhone} at ${formatInTimeZone(appointmentDate, BRUSSELS_TZ, "HH:mm dd/MM")}, slotId=${slotId || "none"}`);
                 
-                // MESSAGE DE CONFIRMATION FINALE AVEC ADRESSE GPS (slot address with provider fallback)
+                // MESSAGE DE CONFIRMATION: Only approximate address, exact sent at T-15
                 const bookedTime = formatInTimeZone(appointmentDate, BRUSSELS_TZ, "HH:mm");
-                const resolvedAddress = effectiveAddress || null; // NO "mon adresse" fallback
+                const resolvedAddress = effectiveAddressApprox || null;
                 
                 // Create human-readable booking date string for post-booking responses
                 const bookingDateStr = isTomorrow 

@@ -20,7 +20,8 @@ import type { Slot } from "@shared/schema";
 const createSlotFormSchema = (t: (key: string) => string) => z.object({
   name: z.string().min(1, t("errors.nameRequired")),
   phone: z.string().optional(),
-  address: z.string().optional(),
+  addressApprox: z.string().optional(),
+  addressExact: z.string().optional(),
   city: z.string().optional(),
   availabilityMode: z.enum(["active", "away", "ghost"]),
   customInstructions: z.string().optional(),
@@ -48,7 +49,8 @@ export default function SlotConfigPage() {
     defaultValues: {
       name: "",
       phone: "",
-      address: "",
+      addressApprox: "",
+      addressExact: "",
       city: "",
       availabilityMode: "active",
       customInstructions: "",
@@ -60,7 +62,8 @@ export default function SlotConfigPage() {
       form.reset({
         name: slot.name,
         phone: slot.phone || "",
-        address: slot.address || "",
+        addressApprox: slot.addressApprox || slot.address || "",
+        addressExact: slot.addressExact || "",
         city: slot.city || "",
         availabilityMode: (slot.availabilityMode as "active" | "away" | "ghost") || "active",
         customInstructions: slot.customInstructions || "",
@@ -183,45 +186,68 @@ export default function SlotConfigPage() {
                 )}
               />
               
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="address"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-mono">{t("slotConfig.address")}</FormLabel>
-                      <FormControl>
-                        <Input 
-                          {...field} 
-                          placeholder={t("slotConfig.addressPlaceholder")}
-                          className="font-mono"
-                          data-testid="input-slot-address"
-                        />
-                      </FormControl>
-                      <FormMessage data-testid="error-slot-address" />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="city"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-mono">{t("slotConfig.city")}</FormLabel>
-                      <FormControl>
-                        <Input 
-                          {...field} 
-                          placeholder={t("slotConfig.cityPlaceholder")}
-                          className="font-mono"
-                          data-testid="input-slot-city"
-                        />
-                      </FormControl>
-                      <FormMessage data-testid="error-slot-city" />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <FormField
+                control={form.control}
+                name="addressApprox"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-mono">Adresse approximative (rue/quartier)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...field} 
+                        placeholder="ex: Boulevard d'Anvers, Saint-Josse"
+                        className="font-mono"
+                        data-testid="input-slot-address-approx"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Donnee au client a la confirmation du RDV
+                    </p>
+                    <FormMessage data-testid="error-slot-address-approx" />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="addressExact"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-mono">Adresse exacte (numero + instructions)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...field} 
+                        placeholder="ex: Boulevard d'Anvers 122, 3eme etage porte gauche"
+                        className="font-mono"
+                        data-testid="input-slot-address-exact"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Envoyee automatiquement 15min avant le RDV uniquement
+                    </p>
+                    <FormMessage data-testid="error-slot-address-exact" />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-mono">{t("slotConfig.city")}</FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...field} 
+                        placeholder={t("slotConfig.cityPlaceholder")}
+                        className="font-mono"
+                        data-testid="input-slot-city"
+                      />
+                    </FormControl>
+                    <FormMessage data-testid="error-slot-city" />
+                  </FormItem>
+                )}
+              />
             </CardContent>
           </Card>
           

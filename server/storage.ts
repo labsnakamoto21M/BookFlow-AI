@@ -76,6 +76,7 @@ export interface IStorage {
   createAppointment(appointment: InsertAppointment): Promise<Appointment>;
   updateAppointment(id: string, updates: Partial<InsertAppointment>): Promise<Appointment | undefined>;
   getAppointmentsNeedingReminder(): Promise<Appointment[]>;
+  getAppointmentsNeedingExactAddress(): Promise<Appointment[]>;
   
   // Blocked Slots (slot-scoped)
   getBlockedSlots(providerId: string, startDate: Date, endDate: Date, slotId: string): Promise<BlockedSlot[]>;
@@ -291,6 +292,20 @@ export class DatabaseStorage implements IStorage {
         eq(appointments.reminderSent, false),
         gte(appointments.appointmentDate, oneHourFromNow),
         lte(appointments.appointmentDate, twoHoursFromNow)
+      )
+    );
+  }
+
+  async getAppointmentsNeedingExactAddress(): Promise<Appointment[]> {
+    const now = new Date();
+    const in15min = new Date(now.getTime() + 15 * 60 * 1000);
+    
+    return db.select().from(appointments).where(
+      and(
+        eq(appointments.status, "confirmed"),
+        eq(appointments.exactAddressSent, false),
+        gte(appointments.appointmentDate, now),
+        lte(appointments.appointmentDate, in15min)
       )
     );
   }

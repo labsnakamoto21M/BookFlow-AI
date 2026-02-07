@@ -36,7 +36,9 @@ export const slots = pgTable("slots", {
   providerId: varchar("provider_id").notNull(),
   name: text("name").notNull(), // Masseuse name
   phone: text("phone"), // WhatsApp phone number for this slot
-  address: text("address"), // Address for this slot
+  address: text("address"), // Legacy - kept for backward compat
+  addressApprox: text("address_approx"), // Approximate address (street/neighborhood) - given at booking confirmation
+  addressExact: text("address_exact"), // Exact address (number + entry instructions) - sent 15min before RDV
   city: text("city"),
   availabilityMode: text("availability_mode").default("active"), // active, away, ghost
   whatsappConnected: boolean("whatsapp_connected").default(false),
@@ -129,6 +131,7 @@ export const appointments = pgTable("appointments", {
   duration: integer("duration").notNull(), // in minutes
   status: text("status").default("confirmed"), // confirmed, cancelled, completed, no-show
   reminderSent: boolean("reminder_sent").default(false),
+  exactAddressSent: boolean("exact_address_sent").default(false),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [

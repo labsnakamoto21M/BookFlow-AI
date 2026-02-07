@@ -52,11 +52,13 @@ Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Ma
 1. **WhatsApp Bot**: Automated responses to client messages, appointment booking flow
 2. **Appointment Management**: Calendar view, booking, cancellation, status updates
 3. **Reminder System**: Automated 1-hour pre-appointment notifications via WhatsApp
-4. **Shared Safety System**: Cross-provider protection against problematic/dangerous clients
-5. **Business Hours**: Configurable weekly availability schedule
-6. **Availability Modes**: ACTIVE (full bot), AWAY (single auto-reply), GHOST (silent)
-7. **Anti-ban Censorship**: Automatic text obfuscation for sensitive content
-8. **Internationalization (i18n)**: Complete multi-language support for 11 languages
+4. **T-15 Exact Address System**: Automatic exact address delivery 15min before appointment
+5. **Address Split Security**: `addressApprox` (street/neighborhood) given at booking, `addressExact` (number + entry) sent only at T-15 or when client says "arrived"
+6. **Shared Safety System**: Cross-provider protection against problematic/dangerous clients
+7. **Business Hours**: Configurable weekly availability schedule
+8. **Availability Modes**: ACTIVE (full bot), AWAY (single auto-reply), GHOST (silent)
+9. **Anti-ban Censorship**: Automatic text obfuscation for sensitive content
+10. **Internationalization (i18n)**: Complete multi-language support for 11 languages
 
 ### Internationalization System
 - **Framework**: i18next with react-i18next
