@@ -1,0 +1,27 @@
+Context: BookFlow-AI est un SaaS Node.js sur Replit avec Drizzle ORM, Baileys multi-slots pour WhatsApp, GPT-4o-mini pour réponses automatiques. Schema déjà bien scopé par slotId (conversationSessions, appointments, basePrices, etc. avec slotId NOT NULL). Problème critique sécurité : adresse stockée unique (dans slots.address et providerProfiles.address) → risque de divulguer adresse exacte trop tôt aux clients, incohérences possibles entre slots.
+
+Objective: Implémenter distinction adresse approximative (rue/quartier – donnée à confirmation RDV) vs adresse exacte (numéro de maison + instructions entrée – seulement 15 min avant RDV ou quand client dit "je suis arrivé"/"là"). Prioriser stockage dans slots (per-agent).
+
+Constraints: 
+- Utiliser Drizzle migrations (créer nouveau fichier migration).
+- Compatibilité ascendante : migrer contenu existant de slots.address vers nouveau champ address_approx ; address_exact commence à null.
+- ProviderProfiles.address → rendre nullable (fallback optionnel pour legacy).
+- Pas de downtime, testable en local/Replit DB.
+- Stack : Node.js, Drizzle, PostgreSQL (Replit).
+
+Required Output: 
+- Nouveau fichier migration (ex. migrations/000X_address_distinction.ts) avec SQL up/down.
+- Modifications dans le fichier schema (probablement shared/db/schema.ts ou server/db/schema.ts) : ajouter addressApprox: text("address_approx"), addressExact: text("address_exact") à slots table ; rendre providerProfiles.address nullable() ; update types Slot / InsertSlot + zod schemas.
+- Exemple fonction utilitaire (ex. dans shared/utils/address.ts ou server/services/slotService.ts) : 
+  getAddressToSend(slot: Slot, appointment: Appointment | null, currentTime: Date, clientMessage?: string): string
+  → retourne slot.addressApprox par défaut ; slot.addressExact si (appointment && diffMinutes(currentTime, appointment.appointmentDate) <= 15) || clientMessage?.toLowerCase().includes("arrivé") || includes("là")
+- Suggestion cron/job simple pour envoi auto address_exact à T-15 (ex. via node-cron sur appointments reminderSent ou nouveau flag).
+
+Priority: Sécurité maximale + simplicité/speed MVP – migration non-destructive, testable rapidement.
+
+Special Instructions:
+- Break into sequential units : 1. Migration + apply, 2. Schema/types update, 3. Fonction getAddressToSend + test console.log, 4. Suggestion intégration bot handler.
+- Error handling : si addressExact null et condition remplie → fallback à addressApprox + log/console.warn + futur alert UI prestataire.
+- Suggest simplest first : pas de nouvelle table, juste 2 colonnes.
+- Flag resource ops : migration sur prod DB – backup avant.
+- Project memory : slotId strict partout, manualOverrideUntil dans slots, detectedLanguage dans conversationSessions, GDPR no full chat logs.

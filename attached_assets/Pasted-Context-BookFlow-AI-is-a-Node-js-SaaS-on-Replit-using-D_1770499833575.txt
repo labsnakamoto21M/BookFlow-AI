@@ -1,0 +1,39 @@
+Context: BookFlow-AI is a Node.js SaaS on Replit using Drizzle ORM, Baileys for multi-slot WhatsApp, GPT-4o-mini for auto replies. Validated plan: add addressApprox + addressExact to slots table, migrate existing slots.address to addressApprox, create getAddressToSend utility, integrate into bot handler, add T-15 cron auto-send. Real test showed double address and early full address leak.
+
+Objective: Fully implement address split (approx vs exact) with migration, utility function, bot integration and T-15 cron auto-send.
+
+Constraints: 
+- Use Drizzle migrations + drizzle-kit (not just db:push for prod safety).
+- Use date-fns for diffInMinutes (or native Date math).
+- Baileys for auto message sending.
+- Backward compatible: fallback to addressApprox if addressExact is null.
+- Replit stack: Node.js, PostgreSQL, Baileys.
+
+Required Output: 
+- Complete migration file (migrations/XXXX_address_split.ts): add columns, migrate data, optionally drop old address column.
+- schema.ts updates: add addressApprox: text("address_approx"), addressExact: text("address_exact").nullable() to slots; make providerProfiles.address nullable(); update Slot type & zod schemas.
+- New utility file (e.g. server/utils/address.ts):
+  export function getAddressToSend(slot: Slot, appointment: Appointment | null, currentTime: Date, clientMessage?: string): string {
+    if (!appointment) return slot.addressApprox || "address not set";
+    const minutesTo = (appointment.appointmentDate.getTime() - currentTime.getTime()) / 60000;
+    const arrivedRegex = /arriv|la|sur place|présent|ici|here|allí|llegue|estoy/i;
+    if (minutesTo <= 15 || arrivedRegex.test(clientMessage || "")) {
+      return slot.addressExact || slot.addressApprox || "address not set";
+    }
+    return slot.addressApprox || "address not set";
+  }
+- Update WhatsApp message handler (e.g. server/handlers/messageHandler.ts): replace any direct slot.address usage with getAddressToSend(...) in confirmation / location messages.
+- Cron job (e.g. server/cron/reminders.ts):
+  - Use node-cron
+  - Every minute: query confirmed appointments where appointmentDate is in [NOW(), NOW() + 15min] and reminderSent = false
+  - For each: send exact address via Baileys to appointment.clientPhone
+  - Update appointment.reminderSent = true
+- Update UI slot form (Team page): replace single address input with two fields: "Approximate address (street/neighborhood)" and "Exact address (number + entry instructions)".
+
+Priority: Security + MVP speed – sequential, testable steps.
+
+Special Instructions:
+- Sequential & testable: 1. Migration + DB test, 2. Utility + console test, 3. Handler integration (comment where to change), 4. Cron + manual test, 5. UI form update.
+- Error handling: log failed sends, fallback to approx, warn if addressExact missing.
+- Simplest first: global cron on server start, no advanced queue.
+- Project memory: slotId strict scoping, manualOverrideUntil, detectedLanguage persisted, double address bug seen in real test.
