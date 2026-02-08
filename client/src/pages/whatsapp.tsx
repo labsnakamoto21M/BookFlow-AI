@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { 
@@ -21,7 +22,7 @@ import {
   Zap
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
-import type { ProviderProfile } from "@shared/schema";
+import type { ProviderProfile, Slot } from "@shared/schema";
 
 interface WhatsAppStatus {
   connected: boolean;
@@ -33,6 +34,7 @@ interface WhatsAppStatus {
 export default function WhatsAppPage() {
   const { toast } = useToast();
   const [pollingEnabled, setPollingEnabled] = useState(true);
+  const [activeSlotId, setActiveSlotId] = useState<string | undefined>(undefined);
 
   const { data: profile, isLoading: profileLoading } = useQuery<ProviderProfile>({
     queryKey: ["/api/provider/profile"],
@@ -40,10 +42,33 @@ export default function WhatsAppPage() {
 
   const isSubscribed = profile?.subscriptionStatus === 'active';
 
-  const { data: status, isLoading, refetch } = useQuery<WhatsAppStatus>({
-    queryKey: ["/api/whatsapp/status"],
-    refetchInterval: pollingEnabled && isSubscribed ? 3000 : false,
+  const { data: slotsData } = useQuery<Slot[]>({
+    queryKey: ["/api/slots"],
     enabled: isSubscribed,
+  });
+
+  useEffect(() => {
+    if (slotsData && slotsData.length > 0 && !activeSlotId) {
+      const stored = localStorage.getItem("activeSlotId");
+      if (stored && slotsData.some(s => s.id === stored)) {
+        setActiveSlotId(stored);
+      } else {
+        setActiveSlotId(slotsData[0].id);
+      }
+    }
+  }, [slotsData, activeSlotId]);
+
+  useEffect(() => {
+    if (activeSlotId) {
+      localStorage.setItem("activeSlotId", activeSlotId);
+    }
+  }, [activeSlotId]);
+
+  const { data: status, isLoading, refetch } = useQuery<WhatsAppStatus>({
+    queryKey: ["/api/whatsapp/status", { slotId: activeSlotId }],
+    queryFn: () => fetch(`/api/whatsapp/status?slotId=${activeSlotId}`, { credentials: "include" }).then(r => r.json()),
+    refetchInterval: pollingEnabled && isSubscribed && activeSlotId ? 3000 : false,
+    enabled: isSubscribed && !!activeSlotId,
   });
 
   useEffect(() => {
@@ -52,11 +77,15 @@ export default function WhatsAppPage() {
     }
   }, [status?.connected]);
 
+  useEffect(() => {
+    setPollingEnabled(true);
+  }, [activeSlotId]);
+
   const disconnectMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/whatsapp/disconnect"),
+    mutationFn: () => apiRequest("POST", "/api/whatsapp/disconnect", { slotId: activeSlotId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/status"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/provider/profile"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/status", { slotId: activeSlotId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/slots"] });
       toast({ title: "Succes", description: "WhatsApp deconnecte" });
       setPollingEnabled(true);
     },
@@ -66,7 +95,7 @@ export default function WhatsAppPage() {
   });
 
   const refreshQRMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/whatsapp/refresh-qr"),
+    mutationFn: () => apiRequest("POST", "/api/whatsapp/refresh-qr", { slotId: activeSlotId }),
     onSuccess: () => {
       refetch();
       toast({ title: "Succes", description: "QR Code actualise" });
@@ -77,9 +106,9 @@ export default function WhatsAppPage() {
   });
 
   const forceReconnectMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/whatsapp/force-reconnect"),
+    mutationFn: () => apiRequest("POST", "/api/whatsapp/force-reconnect", { slotId: activeSlotId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/status", { slotId: activeSlotId }] });
       setPollingEnabled(true);
       toast({ title: "Succes", description: "Reconnexion en cours..." });
     },
@@ -87,6 +116,8 @@ export default function WhatsAppPage() {
       toast({ title: "Erreur", description: "Impossible de reconnecter", variant: "destructive" });
     },
   });
+
+  const activeSlot = slotsData?.find(s => s.id === activeSlotId);
 
   const renderPaymentRequired = () => (
     <div className="text-center space-y-6 py-8">
@@ -111,16 +142,51 @@ export default function WhatsAppPage() {
     </div>
   );
 
+  const renderNoSlots = () => (
+    <div className="text-center space-y-6 py-8">
+      <div className="h-32 w-32 mx-auto rounded-full bg-[#39FF14]/10 border-2 border-[#39FF14]/30 flex items-center justify-center">
+        <Smartphone className="h-16 w-16 text-[#39FF14]" />
+      </div>
+      <div className="space-y-3">
+        <p className="font-mono text-[#39FF14] text-lg font-bold">
+          AUCUN NUMERO CONFIGURE
+        </p>
+        <p className="text-muted-foreground max-w-sm mx-auto">
+          Creez un slot dans la configuration pour connecter un numero WhatsApp
+        </p>
+      </div>
+      <Link href="/configuration">
+        <Button className="bg-[#39FF14] text-black hover:bg-[#39FF14]/80 font-mono" data-testid="button-config-redirect">
+          CONFIGURER UN SLOT
+        </Button>
+      </Link>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-whatsapp-title">Connexion WhatsApp</h1>
           <p className="text-muted-foreground">
-            Connectez votre compte WhatsApp pour activer le bot
+            Connectez vos numeros WhatsApp pour activer les bots
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isSubscribed && slotsData && slotsData.length > 0 && (
+            <Select value={activeSlotId} onValueChange={(val) => setActiveSlotId(val)} data-testid="select-slot">
+              <SelectTrigger className="w-[200px] font-mono border-[#39FF14]/30" data-testid="select-slot-trigger">
+                <SelectValue placeholder="Choisir un slot" />
+              </SelectTrigger>
+              <SelectContent>
+                {slotsData.map(slot => (
+                  <SelectItem key={slot.id} value={slot.id} data-testid={`select-slot-${slot.id}`}>
+                    {slot.name} {slot.whatsappConnected ? "  [ON]" : "  [OFF]"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {profileLoading || isLoading ? (
             <Skeleton className="h-6 w-32" />
           ) : !isSubscribed ? (
@@ -147,14 +213,16 @@ export default function WhatsAppPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <SiWhatsapp className="h-5 w-5 text-primary" />
-              Etat de la connexion
+              {activeSlot ? `${activeSlot.name}` : "Etat de la connexion"}
             </CardTitle>
             <CardDescription>
               {!isSubscribed 
                 ? "Abonnez-vous pour activer le bot WhatsApp"
-                : status?.connected 
-                  ? "Votre WhatsApp est connecte et le bot est actif"
-                  : "Scannez le QR Code avec WhatsApp pour connecter votre compte"
+                : !activeSlotId
+                  ? "Selectionnez un slot pour gerer sa connexion WhatsApp"
+                  : status?.connected 
+                    ? `${activeSlot?.name || "Slot"} est connecte et le bot est actif`
+                    : `Scannez le QR Code pour connecter ${activeSlot?.name || "ce slot"}`
               }
             </CardDescription>
           </CardHeader>
@@ -163,6 +231,10 @@ export default function WhatsAppPage() {
               <Skeleton className="h-64 w-64" />
             ) : !isSubscribed ? (
               renderPaymentRequired()
+            ) : !slotsData || slotsData.length === 0 ? (
+              renderNoSlots()
+            ) : !activeSlotId ? (
+              <p className="text-muted-foreground">Selectionnez un slot ci-dessus</p>
             ) : isLoading ? (
               <Skeleton className="h-64 w-64" />
             ) : status?.connected ? (
@@ -176,6 +248,11 @@ export default function WhatsAppPage() {
                     <p className="text-muted-foreground flex items-center justify-center gap-2">
                       <Smartphone className="h-4 w-4" />
                       {status.phoneNumber}
+                    </p>
+                  )}
+                  {activeSlot && (
+                    <p className="text-sm text-muted-foreground font-mono">
+                      Slot: {activeSlot.name}
                     </p>
                   )}
                 </div>
@@ -201,7 +278,7 @@ export default function WhatsAppPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <p className="font-medium">Scannez ce QR Code</p>
+                  <p className="font-medium">Scannez ce QR Code pour {activeSlot?.name || "ce slot"}</p>
                   <p className="text-sm text-muted-foreground max-w-xs">
                     Ouvrez WhatsApp sur votre telephone, allez dans Parametres - Appareils lies - Lier un appareil
                   </p>
@@ -269,9 +346,9 @@ export default function WhatsAppPage() {
                   1
                 </div>
                 <div>
-                  <p className="font-medium">Scannez le QR Code</p>
+                  <p className="font-medium">Selectionnez un slot</p>
                   <p className="text-sm text-muted-foreground">
-                    Utilisez l'application WhatsApp sur votre telephone pour scanner le code
+                    Choisissez le numero a connecter dans le menu deroulant
                   </p>
                 </div>
               </div>
@@ -280,9 +357,9 @@ export default function WhatsAppPage() {
                   2
                 </div>
                 <div>
-                  <p className="font-medium">Connexion automatique</p>
+                  <p className="font-medium">Scannez le QR Code</p>
                   <p className="text-sm text-muted-foreground">
-                    Une fois scanne, votre compte sera connecte automatiquement
+                    Utilisez l'application WhatsApp sur votre telephone pour scanner le code
                   </p>
                 </div>
               </div>
@@ -293,7 +370,7 @@ export default function WhatsAppPage() {
                 <div>
                   <p className="font-medium">Bot actif 24/7</p>
                   <p className="text-sm text-muted-foreground">
-                    Le bot repond automatiquement aux messages et gere vos reservations
+                    Chaque slot a son propre bot independant. Repetez pour chaque numero.
                   </p>
                 </div>
               </div>
@@ -309,13 +386,13 @@ export default function WhatsAppPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p>
+                Chaque slot est connecte independamment. Pas de melange entre les numeros.
+              </p>
+              <p>
                 Gardez votre telephone connecte a Internet pour maintenir la session WhatsApp active.
               </p>
               <p>
-                Ne deconnectez pas l'appareil lie depuis WhatsApp sur votre telephone, sinon le bot sera desactive.
-              </p>
-              <p>
-                Le QR Code expire apres quelques minutes. Si la connexion echoue, actualisez la page.
+                Le bot se reconnecte automatiquement apres un redemarrage du serveur.
               </p>
             </CardContent>
           </Card>

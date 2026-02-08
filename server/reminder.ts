@@ -33,7 +33,11 @@ export function startReminderService() {
         
         const message = `rappel: ton rdv est dans 1h a ${formattedTime}. je suis vers ${addressText}. je tenvoi le num exact 15min avant. sois a l'heure.`;
 
-        await whatsappManager.sendMessage(apt.providerId, apt.clientPhone, message);
+        if (!apt.slotId) {
+          console.warn(`[REMINDER] Skipping appointment ${apt.id} - no slotId`);
+          continue;
+        }
+        await whatsappManager.sendMessage(apt.providerId, apt.slotId, apt.clientPhone, message);
         await storage.updateAppointment(apt.id, { reminderSent: true });
         
         console.log(`[REMINDER] 1h reminder sent for appointment ${apt.id}`);
@@ -63,7 +67,7 @@ export function startReminderService() {
         
         const message = `c'est bientot. voila l'adresse exacte: ${exact}. google maps. rdv a ${formattedTime}. sois a l'heure.`;
         
-        await whatsappManager.sendMessage(apt.providerId, apt.clientPhone, message);
+        await whatsappManager.sendMessage(apt.providerId, apt.slotId, apt.clientPhone, message);
         await storage.updateAppointment(apt.id, { exactAddressSent: true });
         
         console.log(`[T-15] Exact address sent for appointment ${apt.id}`);

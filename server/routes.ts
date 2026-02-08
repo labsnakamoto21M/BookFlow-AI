@@ -261,6 +261,16 @@ export async function registerRoutes(
         providerId: profile.id,
         sortOrder: existingSlots.length
       });
+      
+      if (data.phone) {
+        const phoneCheck = await storage.isPhoneUsedByAnotherSlot(data.phone);
+        if (phoneCheck.used) {
+          return res.status(409).json({ 
+            message: `Ce numero est deja utilise par "${phoneCheck.slotName}". Un numero WhatsApp ne peut etre associe qu'a un seul slot.`
+          });
+        }
+      }
+      
       const slot = await storage.createSlot(data);
       res.status(201).json(slot);
     } catch (error) {
@@ -302,6 +312,15 @@ export async function registerRoutes(
       
       if (slot.providerId !== profile.id) {
         return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      if (req.body.phone) {
+        const phoneCheck = await storage.isPhoneUsedByAnotherSlot(req.body.phone, id);
+        if (phoneCheck.used) {
+          return res.status(409).json({ 
+            message: `Ce numero est deja utilise par "${phoneCheck.slotName}". Un numero WhatsApp ne peut etre associe qu'a un seul slot.`
+          });
+        }
       }
       
       const updated = await storage.updateSlot(id, req.body);
@@ -756,15 +775,27 @@ export async function registerRoutes(
 
   // GDPR: Messages endpoint removed - no message content is stored
 
-  // WhatsApp
+  // Helper: validate slotId belongs to provider
+  async function validateSlotOwnership(profile: any, slotId: string) {
+    const slot = await storage.getSlot(slotId);
+    if (!slot) return null;
+    if (slot.providerId !== profile.id) return null;
+    return slot;
+  }
+
+  // WhatsApp (slot-scoped: all endpoints require slotId)
   app.get("/api/whatsapp/status", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
+      const slotId = req.query.slotId as string;
+      if (!slotId) return res.status(400).json({ message: "slotId required" });
       
-      // Initialize session if not exists
-      await whatsappManager.initSession(profile.id);
+      const slot = await validateSlotOwnership(profile, slotId);
+      if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
       
-      const status = whatsappManager.getStatus(profile.id);
+      await whatsappManager.initSession(profile.id, slotId);
+      
+      const status = whatsappManager.getStatus(profile.id, slotId);
       res.json(status);
     } catch (error) {
       console.error("Error fetching WhatsApp status:", error);
@@ -775,7 +806,13 @@ export async function registerRoutes(
   app.post("/api/whatsapp/disconnect", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      await whatsappManager.disconnect(profile.id);
+      const slotId = req.body.slotId as string;
+      if (!slotId) return res.status(400).json({ message: "slotId required" });
+      
+      const slot = await validateSlotOwnership(profile, slotId);
+      if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
+      
+      await whatsappManager.disconnect(profile.id, slotId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error disconnecting WhatsApp:", error);
@@ -786,8 +823,14 @@ export async function registerRoutes(
   app.post("/api/whatsapp/refresh-qr", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      await whatsappManager.refreshQR(profile.id);
-      const status = whatsappManager.getStatus(profile.id);
+      const slotId = req.body.slotId as string;
+      if (!slotId) return res.status(400).json({ message: "slotId required" });
+      
+      const slot = await validateSlotOwnership(profile, slotId);
+      if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
+      
+      await whatsappManager.refreshQR(profile.id, slotId);
+      const status = whatsappManager.getStatus(profile.id, slotId);
       res.json(status);
     } catch (error) {
       console.error("Error refreshing QR code:", error);
@@ -798,8 +841,14 @@ export async function registerRoutes(
   app.post("/api/whatsapp/force-reconnect", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      await whatsappManager.forceReconnect(profile.id);
-      const status = whatsappManager.getStatus(profile.id);
+      const slotId = req.body.slotId as string;
+      if (!slotId) return res.status(400).json({ message: "slotId required" });
+      
+      const slot = await validateSlotOwnership(profile, slotId);
+      if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
+      
+      await whatsappManager.forceReconnect(profile.id, slotId);
+      const status = whatsappManager.getStatus(profile.id, slotId);
       res.json(status);
     } catch (error) {
       console.error("Error force reconnecting WhatsApp:", error);
@@ -811,7 +860,13 @@ export async function registerRoutes(
   app.get("/api/whatsapp/qr", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const status = whatsappManager.getStatus(profile.id);
+      const slotId = req.query.slotId as string;
+      if (!slotId) return res.status(400).json({ message: "slotId required" });
+      
+      const slot = await validateSlotOwnership(profile, slotId);
+      if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
+      
+      const status = whatsappManager.getStatus(profile.id, slotId);
       
       if (!status.qrCode) {
         return res.status(404).json({ message: "QR code not available" });
@@ -970,7 +1025,7 @@ export async function registerRoutes(
       const reliability = await storage.incrementNoShow(appointment.clientPhone, profile.id);
       
       // Send warning message via WhatsApp
-      await whatsappManager.sendNoShowWarning(profile.id, appointment.clientPhone);
+      await whatsappManager.sendNoShowWarning(profile.id, slotId, appointment.clientPhone);
       
       res.json({ 
         success: true, 

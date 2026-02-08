@@ -6,6 +6,7 @@ import { createServer } from "http";
 import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
+import { whatsappManager } from "./whatsapp";
 
 const app = express();
 
@@ -169,6 +170,14 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      
+      setTimeout(async () => {
+        try {
+          await whatsappManager.autoReconnectAll();
+        } catch (err) {
+          console.error("[WA-BAILEYS] Startup auto-reconnect failed:", err);
+        }
+      }, 3000);
     },
   );
 })();

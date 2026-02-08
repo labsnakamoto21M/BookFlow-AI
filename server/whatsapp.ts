@@ -109,10 +109,14 @@ class WhatsAppManager {
   private sessions: Map<string, WhatsAppSession> = new Map();
   private awayMessageSent: Map<string, number> = new Map();
 
+  private sessionKey(providerId: string, slotId: string): string {
+    return `${providerId}_${slotId}`;
+  }
+
   // DB ONLY: Load conversation state from database (single source of truth)
-  private async loadState(providerId: string, clientPhone: string): Promise<ConversationState> {
+  private async loadState(providerId: string, slotId: string, clientPhone: string): Promise<ConversationState> {
     try {
-      const dbSession = await storage.getConversationSession(providerId, clientPhone);
+      const dbSession = await storage.getConversationSession(providerId, slotId, clientPhone);
       
       // Si pas de session ou session expirée (30 min), créer une nouvelle
       // BUT preserve lastBooking fields even after session expires (for post-booking address queries)
@@ -209,8 +213,8 @@ class WhatsAppManager {
   }
 
   // Clear conversation state from DB
-  private async clearState(providerId: string, clientPhone: string): Promise<void> {
-    await storage.deleteConversationSession(providerId, clientPhone);
+  private async clearState(providerId: string, slotId: string, clientPhone: string): Promise<void> {
+    await storage.deleteConversationSession(providerId, slotId, clientPhone);
   }
 
   private async classifyIntent(
@@ -388,27 +392,28 @@ Return ONLY the JSON object:`;
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
-  private async cleanAuthFiles(providerId: string): Promise<void> {
-    const authPath = `./auth_info_baileys/${providerId}`;
+  private async cleanAuthFiles(providerId: string, slotId: string): Promise<void> {
+    const authPath = `./auth_info_baileys/${providerId}_${slotId}`;
     try {
       if (fs.existsSync(authPath)) {
         const files = fs.readdirSync(authPath);
         for (const file of files) {
           fs.unlinkSync(path.join(authPath, file));
         }
-        console.log(`[WA-BAILEYS] Cleaned ${files.length} auth files for provider: ${providerId}`);
+        console.log(`[WA-BAILEYS] Cleaned ${files.length} auth files for provider: ${providerId}, slot: ${slotId}`);
       }
     } catch (error: any) {
       console.error(`[WA-BAILEYS] Error cleaning auth files:`, error?.message);
     }
   }
 
-  async initSession(providerId: string): Promise<WhatsAppSession> {
-    if (this.sessions.has(providerId)) {
-      return this.sessions.get(providerId)!;
+  async initSession(providerId: string, slotId: string): Promise<WhatsAppSession> {
+    const key = this.sessionKey(providerId, slotId);
+    if (this.sessions.has(key)) {
+      return this.sessions.get(key)!;
     }
 
-    const authPath = `./auth_info_baileys/${providerId}`;
+    const authPath = `./auth_info_baileys/${providerId}_${slotId}`;
     if (!fs.existsSync(authPath)) {
       fs.mkdirSync(authPath, { recursive: true });
       console.log("[WA-BAILEYS] Session directory created:", authPath);
@@ -421,20 +426,20 @@ Return ONLY the JSON object:`;
       connected: false,
       phoneNumber: null,
       providerId,
-      slotId: null, // Will be resolved on connection=open
+      slotId,
       createdAt: now,
       lastRestart: now,
     };
 
-    this.sessions.set(providerId, session);
+    this.sessions.set(key, session);
 
-    await this.connectSocket(providerId, session);
+    await this.connectSocket(providerId, slotId, session);
 
     return session;
   }
 
-  private async connectSocket(providerId: string, session: WhatsAppSession): Promise<void> {
-    const authPath = `./auth_info_baileys/${providerId}`;
+  private async connectSocket(providerId: string, slotId: string, session: WhatsAppSession): Promise<void> {
+    const authPath = `./auth_info_baileys/${providerId}_${slotId}`;
     
     try {
       const { state, saveCreds } = await useMultiFileAuthState(authPath);
@@ -476,15 +481,14 @@ Return ONLY the JSON object:`;
           session.connected = false;
           session.phoneNumber = null;
           session.qrCode = null;
-          await storage.updateProviderProfile(providerId, { whatsappConnected: false });
+          await storage.updateSlot(slotId, { whatsappConnected: false });
 
           if (shouldReconnect) {
-            setTimeout(() => this.connectSocket(providerId, session), 5000);
+            setTimeout(() => this.connectSocket(providerId, slotId, session), 5000);
           } else {
-            // Logged out (401) - clean auth files for fresh QR code generation
-            this.sessions.delete(providerId);
-            await this.cleanAuthFiles(providerId);
-            console.log(`[WA-BAILEYS] Auth files cleaned for provider: ${providerId}. Ready for new QR.`);
+            this.sessions.delete(this.sessionKey(providerId, slotId));
+            await this.cleanAuthFiles(providerId, slotId);
+            console.log(`[WA-BAILEYS] Auth files cleaned for provider: ${providerId}, slot: ${slotId}. Ready for new QR.`);
           }
         } else if (connection === "open") {
           session.connected = true;
@@ -493,25 +497,9 @@ Return ONLY the JSON object:`;
           const user = socket.user;
           session.phoneNumber = user?.id?.split(":")[0] || user?.id?.split("@")[0] || null;
           
-          // SLOT-AWARE: Resolve slotId by matching WhatsApp phone to slot phone
-          let resolvedSlotId: string | null = null;
-          if (session.phoneNumber) {
-            const normalizedSessionPhone = normalizePhone(session.phoneNumber);
-            const providerSlots = await storage.getSlots(providerId);
-            for (const slot of providerSlots) {
-              const normalizedSlotPhone = normalizePhone(slot.phone);
-              if (normalizedSlotPhone && normalizedSlotPhone === normalizedSessionPhone) {
-                resolvedSlotId = slot.id;
-                break;
-              }
-            }
-          }
-          session.slotId = resolvedSlotId;
+          console.log(`[WA-BAILEYS] Connected: providerId=${providerId}, slotId=${slotId}, phone=${session.phoneNumber}`);
           
-          // Log connection with slot info
-          console.log(`[WA-BAILEYS] Connected: providerId=${providerId}, phone=${session.phoneNumber}, slotId=${resolvedSlotId || "none"}`);
-          
-          await storage.updateProviderProfile(providerId, { whatsappConnected: true });
+          await storage.updateSlot(slotId, { whatsappConnected: true });
         }
       });
 
@@ -520,7 +508,7 @@ Return ONLY the JSON object:`;
 
         for (const msg of m.messages) {
           if (!msg.message || msg.key.fromMe) continue;
-          await this.handleIncomingMessage(providerId, msg, socket);
+          await this.handleIncomingMessage(providerId, slotId, msg, socket);
         }
       });
 
@@ -531,6 +519,7 @@ Return ONLY the JSON object:`;
 
   async handleIncomingMessage(
     providerId: string, 
+    slotId: string,
     msg: proto.IWebMessageInfo, 
     socket: WASocket
   ): Promise<void> {
@@ -572,7 +561,7 @@ Return ONLY the JSON object:`;
       const oneHourAgo = Date.now() - (60 * 60 * 1000);
       
       if (!lastAwaySent || lastAwaySent < oneHourAgo) {
-        await this.sendMessage(providerId, clientPhone, "cc! je suis indisponible pour le moment, mais laisse ton message et je te repondrai plus tard");
+        await this.sendMessage(providerId, slotId, clientPhone, "cc! je suis indisponible pour le moment, mais laisse ton message et je te repondrai plus tard");
         this.awayMessageSent.set(awayKey, Date.now());
       }
       return;
@@ -599,21 +588,13 @@ Return ONLY the JSON object:`;
 
     const reliability = await storage.getClientReliability(clientPhone);
     if (reliability && reliability.noShowTotal && reliability.noShowTotal >= 2) {
-      await this.sendMessage(providerId, clientPhone, "desole, je ne peux plus te donner de rdv. tu as rate trop de rdv sans prevenir.");
+      await this.sendMessage(providerId, slotId, clientPhone, "desole, je ne peux plus te donner de rdv. tu as rate trop de rdv sans prevenir.");
       return;
     }
 
     await storage.isBlacklisted(clientPhone);
 
-    // SLOT-AWARE: Get slotId from session (V1 STRICT: must exist)
-    const session = this.sessions.get(providerId);
-    const slotId = session?.slotId;
-    if (!slotId) {
-      console.error(`[WA] No slotId for provider ${providerId} - cannot process message`);
-      return; // Silent ignore if no slot configured
-    }
-
-    const state = await this.loadState(providerId, clientPhone);
+    const state = await this.loadState(providerId, slotId, clientPhone);
     const nowUtc = new Date();
     
     const upcomingAppointment = await storage.getNextClientAppointment(providerId, clientPhone, slotId);
@@ -632,12 +613,12 @@ Return ONLY the JSON object:`;
       const postBookingResponse = await this.handlePostBookingMessage(
         providerId, clientPhone, content, state, profile, slotId, upcomingAppointment, classified
       );
-      await this.sendMessage(providerId, clientPhone, postBookingResponse);
+      await this.sendMessage(providerId, slotId, clientPhone, postBookingResponse);
       return;
     }
 
     const response = await this.generateAIResponse(providerId, clientPhone, content, profile, slotId, classified);
-    await this.sendMessage(providerId, clientPhone, response);
+    await this.sendMessage(providerId, slotId, clientPhone, response);
   }
 
   private isAddressQuery(content: string): boolean {
@@ -949,7 +930,7 @@ Return ONLY the JSON object:`;
     slotId: string | null = null,
     classified?: ClassifiedIntent
   ): Promise<string> {
-    let convState = await this.loadState(providerId, clientPhone);
+    let convState = await this.loadState(providerId, slotId!, clientPhone);
     
     let slot: any = null;
     if (slotId) {
@@ -1068,7 +1049,7 @@ Return ONLY the JSON object:`;
     // DURATION CHOICE: Deterministic if type is already selected
     if (intent === "duration_choice" && convState.type) {
       const response = await this.handleDurationChoice(providerId, clientPhone, userMessage, convState.type, slotId);
-      convState = await this.loadState(providerId, clientPhone);
+      convState = await this.loadState(providerId, slotId!, clientPhone);
       convState.chatHistory.push({ role: "user", content: userMessage });
       convState.chatHistory.push({ role: "assistant", content: response });
       convState.offTopicCount = 0;
@@ -1695,7 +1676,7 @@ Reponds au dernier message.`;
     }
 
     // DB SINGLE SOURCE OF TRUTH: Persist duration selection
-    const currentState = await this.loadState(providerId, clientPhone);
+    const currentState = await this.loadState(providerId, slotId, clientPhone);
     try {
       await this.persistState(providerId, clientPhone, { 
         ...currentState,
@@ -1718,9 +1699,9 @@ Reponds au dernier message.`;
     return response;
   }
 
-  private async generateTotalRecap(providerId: string, clientPhone: string): Promise<string> {
+  private async generateTotalRecap(providerId: string, slotId: string, clientPhone: string): Promise<string> {
     // DB SINGLE SOURCE OF TRUTH: Load state from database
-    const state = await this.loadState(providerId, clientPhone);
+    const state = await this.loadState(providerId, slotId, clientPhone);
     
     if (!state.type || !state.duration) {
       return "pas de selection en cours\n\ntape *prive* ou *escort* pour commencer";
@@ -1754,7 +1735,7 @@ Reponds au dernier message.`;
     const serviceExtras = await storage.getServiceExtras(providerId, slotId);
     const customExtras = await storage.getCustomExtras(providerId, slotId);
     // DB SINGLE SOURCE OF TRUTH: Load state from database
-    const state = await this.loadState(providerId, clientPhone);
+    const state = await this.loadState(providerId, slotId, clientPhone);
     
     const activeExtras = serviceExtras.filter(e => e.active);
     const activeCustom = customExtras.filter(e => e.active);
@@ -1789,7 +1770,7 @@ Reponds au dernier message.`;
     const serviceExtras = await storage.getServiceExtras(providerId, slotId);
     const customExtras = await storage.getCustomExtras(providerId, slotId);
     // DB SINGLE SOURCE OF TRUTH: Load state from database
-    const state = await this.loadState(providerId, clientPhone);
+    const state = await this.loadState(providerId, slotId, clientPhone);
     
     const activeExtras = serviceExtras.filter(e => e.active);
     const activeCustom = customExtras.filter(e => e.active);
@@ -2034,13 +2015,13 @@ Reponds au dernier message.`;
     return `cc!\n\ntape *prix* pour mes tarifs\ntape *rdv* pour reserver`;
   }
 
-  async sendNoShowWarning(providerId: string, clientPhone: string): Promise<void> {
+  async sendNoShowWarning(providerId: string, slotId: string, clientPhone: string): Promise<void> {
     const message = "coucou, je vois que tu n'es pas venu... s'il te plait, ne reserve que si tu es certain de venir. mon systeme bloque les numeros apres deux absences, donc si tu rates le prochain, je ne pourrai plus te donner de rdv. on fait attention?";
-    await this.sendMessage(providerId, clientPhone, message);
+    await this.sendMessage(providerId, slotId, clientPhone, message);
   }
 
-  async sendMessage(providerId: string, to: string, message: string) {
-    const session = this.sessions.get(providerId);
+  async sendMessage(providerId: string, slotId: string, to: string, message: string) {
+    const session = this.sessions.get(this.sessionKey(providerId, slotId));
     if (!session?.connected || !session.socket) {
       return;
     }
@@ -2067,8 +2048,8 @@ Reponds au dernier message.`;
     }
   }
 
-  getStatus(providerId: string): { connected: boolean; qrCode: string | null; phoneNumber: string | null } {
-    const session = this.sessions.get(providerId);
+  getStatus(providerId: string, slotId: string): { connected: boolean; qrCode: string | null; phoneNumber: string | null } {
+    const session = this.sessions.get(this.sessionKey(providerId, slotId));
     return {
       connected: session?.connected || false,
       qrCode: session?.qrCode || null,
@@ -2076,8 +2057,9 @@ Reponds au dernier message.`;
     };
   }
 
-  async disconnect(providerId: string): Promise<void> {
-    const session = this.sessions.get(providerId);
+  async disconnect(providerId: string, slotId: string): Promise<void> {
+    const key = this.sessionKey(providerId, slotId);
+    const session = this.sessions.get(key);
     if (session?.socket) {
       try {
         await session.socket.logout();
@@ -2090,23 +2072,21 @@ Reponds au dernier message.`;
         // Ignore socket close errors
       }
     }
-    this.sessions.delete(providerId);
-    // Clean auth files immediately after logout to allow fresh QR generation
-    await this.cleanAuthFiles(providerId);
-    await storage.updateProviderProfile(providerId, { whatsappConnected: false });
-    console.log(`[WA-BAILEYS] Disconnected and cleaned for provider: ${providerId}`);
+    this.sessions.delete(key);
+    await this.cleanAuthFiles(providerId, slotId);
+    await storage.updateSlot(slotId, { whatsappConnected: false });
+    console.log(`[WA-BAILEYS] Disconnected and cleaned for provider: ${providerId}, slot: ${slotId}`);
   }
 
-  async refreshQR(providerId: string): Promise<void> {
-    const session = this.sessions.get(providerId);
+  async refreshQR(providerId: string, slotId: string): Promise<void> {
+    const key = this.sessionKey(providerId, slotId);
+    const session = this.sessions.get(key);
     
-    // Don't refresh if already connected - require explicit disconnect first
     if (session?.connected) {
-      console.log(`[WA-BAILEYS] Session already connected for provider: ${providerId}, skipping refresh`);
+      console.log(`[WA-BAILEYS] Session already connected for provider: ${providerId}, slot: ${slotId}, skipping refresh`);
       return;
     }
     
-    // Close existing socket if any
     if (session?.socket) {
       try {
         session.socket.end(undefined);
@@ -2115,23 +2095,19 @@ Reponds au dernier message.`;
       }
     }
     
-    // Remove session from map
-    this.sessions.delete(providerId);
+    this.sessions.delete(key);
+    await this.cleanAuthFiles(providerId, slotId);
     
-    // Clean auth files to force new QR code generation
-    await this.cleanAuthFiles(providerId);
-    
-    // Start fresh session
-    console.log(`[WA-BAILEYS] Refreshing QR for provider: ${providerId}`);
-    await this.initSession(providerId);
+    console.log(`[WA-BAILEYS] Refreshing QR for provider: ${providerId}, slot: ${slotId}`);
+    await this.initSession(providerId, slotId);
   }
 
-  async forceReconnect(providerId: string): Promise<void> {
-    console.log(`[WA-BAILEYS] Force reconnect requested for provider: ${providerId}`);
+  async forceReconnect(providerId: string, slotId: string): Promise<void> {
+    console.log(`[WA-BAILEYS] Force reconnect requested for provider: ${providerId}, slot: ${slotId}`);
     
-    const session = this.sessions.get(providerId);
+    const key = this.sessionKey(providerId, slotId);
+    const session = this.sessions.get(key);
     
-    // Close and cleanup existing socket
     if (session?.socket) {
       try {
         session.socket.end(undefined);
@@ -2140,14 +2116,52 @@ Reponds au dernier message.`;
       }
     }
     
-    // Remove session and clean auth files
-    this.sessions.delete(providerId);
-    await this.cleanAuthFiles(providerId);
-    await storage.updateProviderProfile(providerId, { whatsappConnected: false });
+    this.sessions.delete(key);
+    await this.cleanAuthFiles(providerId, slotId);
+    await storage.updateSlot(slotId, { whatsappConnected: false });
     
-    // Start fresh session for new QR code
-    await this.initSession(providerId);
-    console.log(`[WA-BAILEYS] Force reconnect completed for provider: ${providerId}`);
+    await this.initSession(providerId, slotId);
+    console.log(`[WA-BAILEYS] Force reconnect completed for provider: ${providerId}, slot: ${slotId}`);
+  }
+
+  async autoReconnectAll(): Promise<void> {
+    try {
+      const connectedSlots = await storage.getConnectedSlots();
+      if (connectedSlots.length === 0) {
+        console.log("[WA-BAILEYS] No previously connected slots to reconnect");
+        return;
+      }
+      
+      console.log(`[WA-BAILEYS] Auto-reconnecting ${connectedSlots.length} slot(s)...`);
+      
+      for (const slot of connectedSlots) {
+        const authPath = `./auth_info_baileys/${slot.providerId}_${slot.id}`;
+        if (!fs.existsSync(authPath)) {
+          console.warn(`[WA-BAILEYS] No auth files for slot ${slot.name} (${slot.id}) — skipping, needs new QR scan`);
+          await storage.updateSlot(slot.id, { whatsappConnected: false });
+          continue;
+        }
+        
+        const authFiles = fs.readdirSync(authPath);
+        if (authFiles.length === 0) {
+          console.warn(`[WA-BAILEYS] Empty auth dir for slot ${slot.name} (${slot.id}) — skipping`);
+          await storage.updateSlot(slot.id, { whatsappConnected: false });
+          continue;
+        }
+        
+        try {
+          console.log(`[WA-BAILEYS] Reconnecting slot: ${slot.name} (provider=${slot.providerId}, slot=${slot.id})`);
+          await this.initSession(slot.providerId, slot.id);
+        } catch (err: any) {
+          console.error(`[WA-BAILEYS] Failed to reconnect slot ${slot.name}:`, err?.message);
+          await storage.updateSlot(slot.id, { whatsappConnected: false });
+        }
+      }
+      
+      console.log("[WA-BAILEYS] Auto-reconnect complete");
+    } catch (error) {
+      console.error("[WA-BAILEYS] Auto-reconnect error:", error);
+    }
   }
 
   cleanupExpiredConversations(): void {

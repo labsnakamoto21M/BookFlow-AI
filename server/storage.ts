@@ -48,7 +48,7 @@ import {
   type InsertConversationSession,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, sql, desc, count, sum } from "drizzle-orm";
+import { eq, ne, and, gte, lte, sql, desc, count, sum } from "drizzle-orm";
 
 export interface IStorage {
   // Provider Profile
@@ -151,10 +151,16 @@ export interface IStorage {
   updateSlot(id: string, updates: Partial<InsertSlot>): Promise<Slot | undefined>;
   deleteSlot(id: string): Promise<void>;
   
-  // Conversation Sessions (persistent WhatsApp bot state)
-  getConversationSession(providerId: string, clientPhone: string): Promise<ConversationSession | undefined>;
+  // Phone uniqueness: check if a phone is already used by another slot
+  isPhoneUsedByAnotherSlot(phone: string, excludeSlotId?: string): Promise<{ used: boolean; slotName?: string; providerId?: string }>;
+  
+  // Get all slots marked as connected (for startup auto-reconnect)
+  getConnectedSlots(): Promise<Slot[]>;
+  
+  // Conversation Sessions (persistent WhatsApp bot state) - STRICT slot-scoped
+  getConversationSession(providerId: string, slotId: string, clientPhone: string): Promise<ConversationSession | undefined>;
   upsertConversationSession(session: InsertConversationSession): Promise<ConversationSession>;
-  deleteConversationSession(providerId: string, clientPhone: string): Promise<void>;
+  deleteConversationSession(providerId: string, slotId: string, clientPhone: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -940,18 +946,44 @@ export class DatabaseStorage implements IStorage {
     await db.delete(slots).where(eq(slots.id, id));
   }
   
+  // Get all slots marked as connected (for startup auto-reconnect)
+  async getConnectedSlots(): Promise<Slot[]> {
+    return db.select().from(slots)
+      .where(eq(slots.whatsappConnected, true));
+  }
+  
+  // Phone uniqueness: check if phone is already assigned to another slot (across ALL providers)
+  async isPhoneUsedByAnotherSlot(phone: string, excludeSlotId?: string): Promise<{ used: boolean; slotName?: string; providerId?: string }> {
+    if (!phone) return { used: false };
+    
+    const normalized = phone.replace(/[\s\-\(\)\.]/g, "").replace(/^(\+|00)/, "");
+    if (!normalized) return { used: false };
+    
+    const allSlots = await db.select().from(slots);
+    for (const slot of allSlots) {
+      if (excludeSlotId && slot.id === excludeSlotId) continue;
+      if (!slot.phone) continue;
+      const slotNormalized = slot.phone.replace(/[\s\-\(\)\.]/g, "").replace(/^(\+|00)/, "");
+      if (slotNormalized === normalized) {
+        return { used: true, slotName: slot.name, providerId: slot.providerId };
+      }
+    }
+    return { used: false };
+  }
+  
   // Conversation Sessions (persistent WhatsApp bot state)
-  async getConversationSession(providerId: string, clientPhone: string): Promise<ConversationSession | undefined> {
+  async getConversationSession(providerId: string, slotId: string, clientPhone: string): Promise<ConversationSession | undefined> {
     const [session] = await db.select().from(conversationSessions)
       .where(and(
         eq(conversationSessions.providerId, providerId),
+        eq(conversationSessions.slotId, slotId),
         eq(conversationSessions.clientPhone, clientPhone)
       ));
     return session;
   }
   
   async upsertConversationSession(session: InsertConversationSession): Promise<ConversationSession> {
-    const existing = await this.getConversationSession(session.providerId, session.clientPhone);
+    const existing = await this.getConversationSession(session.providerId, session.slotId, session.clientPhone);
     
     if (existing) {
       const [result] = await db.update(conversationSessions)
@@ -965,10 +997,11 @@ export class DatabaseStorage implements IStorage {
     }
   }
   
-  async deleteConversationSession(providerId: string, clientPhone: string): Promise<void> {
+  async deleteConversationSession(providerId: string, slotId: string, clientPhone: string): Promise<void> {
     await db.delete(conversationSessions)
       .where(and(
         eq(conversationSessions.providerId, providerId),
+        eq(conversationSessions.slotId, slotId),
         eq(conversationSessions.clientPhone, clientPhone)
       ));
   }

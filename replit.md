@@ -27,7 +27,7 @@ Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Ma
 - **Authentication**: Custom Email/Password with JWT tokens
 - **Security**: Helmet middleware for HTTP headers protection
 - **Database ORM**: Drizzle ORM with PostgreSQL dialect
-- **WhatsApp Integration**: whatsapp-web.js library with Puppeteer
+- **WhatsApp Integration**: Baileys (lightweight WhatsApp Web API) with per-slot isolation
 - **Scheduled Tasks**: node-cron for appointment reminders
 
 ### Data Storage
@@ -47,6 +47,15 @@ Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Ma
 - RESTful API under `/api` prefix
 - JWT-protected routes using `isAuthenticated` middleware
 - Provider-scoped data access based on authenticated user
+
+### Multi-Slot WhatsApp Isolation
+- **Session Keying**: WhatsApp sessions Map keyed by `${providerId}_${slotId}` composite key
+- **Auth File Isolation**: Per-slot credential storage at `auth_info_baileys/${providerId}_${slotId}`
+- **Conversation Scoping**: All conversation session queries require (providerId, slotId, clientPhone) triple
+- **Phone Uniqueness**: `isPhoneUsedByAnotherSlot()` validates phone uniqueness across entire system (409 on duplicate)
+- **Startup Auto-Reconnect**: `autoReconnectAll()` runs 3s after server boot, restores slots with whatsappConnected=true and valid auth files
+- **API Endpoints**: All WhatsApp routes (`/api/whatsapp/*`) require `slotId` parameter (query for GET, body for POST)
+- **Frontend**: whatsapp.tsx uses slot selector dropdown, per-slot QR/status display, localStorage persistence for active slot
 
 ### Key Features
 1. **WhatsApp Bot**: Automated responses to client messages, appointment booking flow
@@ -81,10 +90,10 @@ Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Ma
 
 ### Third-Party Services
 - **PostgreSQL**: Database
-- **WhatsApp Web**: Client-side WhatsApp automation via whatsapp-web.js
+- **WhatsApp Web**: Lightweight WhatsApp Web API via Baileys
 
 ### Key NPM Packages
-- `whatsapp-web.js`: WhatsApp Web client automation
+- `baileys`: WhatsApp Web client automation (lightweight, no Puppeteer)
 - `qrcode`: QR code generation for WhatsApp pairing
 - `drizzle-orm` / `drizzle-kit`: Database ORM and migrations
 - `bcryptjs` / `jsonwebtoken`: Authentication
