@@ -19,11 +19,11 @@ const LANGUAGES = [
 ] as const;
 
 const PLANS = [
-  { name: "SOLO", price: 59, slots: 1 },
-  { name: "DUO", price: 99, slots: 2 },
-  { name: "TRIO", price: 129, slots: 3 },
-  { name: "HEXA", price: 199, slots: 6 },
-  { name: "AGENCY", price: 299, slots: 15 },
+  { name: "Solo", price: 59, slots: 1 },
+  { name: "Duo", price: 99, slots: 2 },
+  { name: "Trio", price: 129, slots: 3 },
+  { name: "Hexa", price: 199, slots: 6 },
+  { name: "Agency", price: 299, slots: 15 },
 ] as const;
 
 function LanguageSelector() {
@@ -259,7 +259,7 @@ export default function LandingPage() {
                 name={plan.name}
                 price={plan.price}
                 slots={plan.slots}
-                isPopular={plan.name === "TRIO"}
+                isPopular={plan.name === "Trio"}
               />
             ))}
           </div>
