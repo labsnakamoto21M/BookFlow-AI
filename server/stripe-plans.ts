@@ -1,33 +1,33 @@
 export const SUBSCRIPTION_PLANS = {
   solo: {
     name: "SOLO",
-    price: 4900, // 49 EUR in cents
+    price: 5900, // 59 EUR in cents
     slots: 1,
     priceId: process.env.STRIPE_PRICE_SOLO || process.env.STRIPE_PRICE_ID,
   },
   duo: {
     name: "DUO",
-    price: 7900, // 79 EUR in cents
+    price: 9900, // 99 EUR in cents
     slots: 2,
     priceId: process.env.STRIPE_PRICE_DUO,
   },
   trio: {
     name: "TRIO",
-    price: 9900, // 99 EUR in cents
+    price: 12900, // 129 EUR in cents
     slots: 3,
     priceId: process.env.STRIPE_PRICE_TRIO,
   },
-  elite: {
-    name: "ELITE",
-    price: 14900, // 149 EUR in cents
+  hexa: {
+    name: "HEXA",
+    price: 19900, // 199 EUR in cents
     slots: 6,
-    priceId: process.env.STRIPE_PRICE_ELITE,
+    priceId: process.env.STRIPE_PRICE_HEXA,
   },
-  agence: {
-    name: "AGENCE",
-    price: 22900, // 229 EUR in cents
+  agency: {
+    name: "AGENCY",
+    price: 29900, // 299 EUR in cents
     slots: 15,
-    priceId: process.env.STRIPE_PRICE_AGENCE,
+    priceId: process.env.STRIPE_PRICE_AGENCY,
   },
 } as const;
 

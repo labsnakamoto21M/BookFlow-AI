@@ -19,11 +19,11 @@ const LANGUAGES = [
 ] as const;
 
 const PLANS = [
-  { name: "SOLO", price: 49, slots: 1 },
-  { name: "DUO", price: 79, slots: 2 },
-  { name: "TRIO", price: 99, slots: 3 },
-  { name: "ELITE", price: 149, slots: 6 },
-  { name: "AGENCE", price: 229, slots: 15 },
+  { name: "SOLO", price: 59, slots: 1 },
+  { name: "DUO", price: 99, slots: 2 },
+  { name: "TRIO", price: 129, slots: 3 },
+  { name: "HEXA", price: 199, slots: 6 },
+  { name: "AGENCY", price: 299, slots: 15 },
 ] as const;
 
 function LanguageSelector() {

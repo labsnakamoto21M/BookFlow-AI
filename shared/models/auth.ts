@@ -22,7 +22,7 @@ export const users = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   role: text("role").default("user"), // 'user' or 'ADMIN'
-  subscriptionPlan: text("subscription_plan").default("solo"), // solo, duo, trio, elite, agence
+  subscriptionPlan: text("subscription_plan").default("solo"), // solo, duo, trio, hexa, agency
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
