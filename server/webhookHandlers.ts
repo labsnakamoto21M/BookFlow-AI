@@ -1,5 +1,6 @@
 import { getStripeSync } from './stripeClient';
 import { storage } from './storage';
+import { getPlanByPriceId, getMaxSlotsByPlan } from './stripe-plans';
 
 export class WebhookHandlers {
   static async processWebhook(payload: Buffer, signature: string): Promise<void> {
@@ -22,20 +23,31 @@ export class WebhookHandlers {
         const session = event.data.object;
         const customerId = session.customer;
         const providerId = session.metadata?.providerId;
+        const planName = session.metadata?.plan || 'solo';
+        const maxSlots = parseInt(session.metadata?.maxSlots || '1', 10);
         
         if (providerId) {
           await storage.updateProviderProfile(providerId, {
             subscriptionStatus: 'active',
             stripeCustomerId: customerId,
+            maxSlots: maxSlots,
           });
-          console.log(`[Stripe Webhook] Checkout completed - activated subscription for provider ${providerId}`);
+          
+          const profile = await storage.getProviderProfileById(providerId);
+          if (profile) {
+            await storage.updateUserSubscriptionPlan(profile.userId, planName);
+          }
+          
+          console.log(`[Stripe Webhook] Checkout completed - provider ${providerId}, plan=${planName}, maxSlots=${maxSlots}`);
         } else if (customerId) {
           const profile = await storage.getProviderProfileByStripeCustomerId(customerId);
           if (profile) {
             await storage.updateProviderProfile(profile.id, {
               subscriptionStatus: 'active',
+              maxSlots: maxSlots,
             });
-            console.log(`[Stripe Webhook] Checkout completed - activated subscription for customer ${customerId}`);
+            await storage.updateUserSubscriptionPlan(profile.userId, planName);
+            console.log(`[Stripe Webhook] Checkout completed - customer ${customerId}, plan=${planName}, maxSlots=${maxSlots}`);
           }
         }
       }
@@ -48,9 +60,27 @@ export class WebhookHandlers {
         const profile = await storage.getProviderProfileByStripeCustomerId(customerId);
         if (profile) {
           const isActive = subscription.status === 'active' || subscription.status === 'trialing';
-          await storage.updateProviderProfile(profile.id, {
-            subscriptionStatus: isActive ? 'active' : 'cancelled'
-          });
+          
+          const updateData: any = {
+            subscriptionStatus: isActive ? 'active' : 'cancelled',
+          };
+
+          const priceId = subscription.items?.data?.[0]?.price?.id;
+          if (priceId && isActive) {
+            const detectedPlan = getPlanByPriceId(priceId);
+            if (detectedPlan) {
+              const detectedMaxSlots = getMaxSlotsByPlan(detectedPlan);
+              updateData.maxSlots = detectedMaxSlots;
+              await storage.updateUserSubscriptionPlan(profile.userId, detectedPlan);
+              console.log(`[Stripe Webhook] Subscription updated for ${customerId}: plan=${detectedPlan}, maxSlots=${detectedMaxSlots}`);
+            }
+          } else if (!isActive) {
+            updateData.maxSlots = 0;
+            await storage.updateUserSubscriptionPlan(profile.userId, 'solo');
+            console.log(`[Stripe Webhook] Subscription cancelled/expired for ${customerId}: maxSlots=0, plan=solo`);
+          }
+
+          await storage.updateProviderProfile(profile.id, updateData);
           console.log(`[Stripe Webhook] Updated subscription status for ${customerId}: ${isActive ? 'active' : 'cancelled'}`);
         }
       }

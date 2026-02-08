@@ -92,7 +92,11 @@ export async function registerRoutes(
   app.get("/api/provider/profile", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      res.json(profile);
+      const user = await storage.getUserById(req.user.id);
+      res.json({
+        ...profile,
+        subscriptionPlan: user?.subscriptionPlan || 'solo',
+      });
     } catch (error) {
       console.error("Error fetching provider profile:", error);
       res.status(500).json({ message: "Failed to fetch profile" });
@@ -1127,19 +1131,14 @@ export async function registerRoutes(
       const host = req.get('host');
       const baseUrl = `${protocol}://${host}`;
 
-      // Get plan from request body, default to solo
       const selectedPlan = req.body.plan || 'solo';
       const priceId = getPriceIdForPlan(selectedPlan);
+      const maxSlots = getMaxSlotsByPlan(selectedPlan);
       
       if (!priceId) {
-        // Fallback to legacy STRIPE_PRICE_ID for backward compatibility
-        const legacyPriceId = process.env.STRIPE_PRICE_ID;
-        if (!legacyPriceId) {
-          return res.status(500).json({ message: "Plan non configure" });
-        }
+        console.error(`[Stripe] No price ID configured for plan: ${selectedPlan}`);
+        return res.status(400).json({ message: `Plan "${selectedPlan}" non configure. Contactez le support.` });
       }
-
-      const finalPriceId = priceId || process.env.STRIPE_PRICE_ID;
 
       let customerId = profile.stripeCustomerId;
       
@@ -1163,7 +1162,7 @@ export async function registerRoutes(
         payment_method_types: ['card'],
         line_items: [
           {
-            price: finalPriceId,
+            price: priceId,
             quantity: 1,
           },
         ],
@@ -1173,13 +1172,18 @@ export async function registerRoutes(
         metadata: {
           providerId: profile.id,
           plan: selectedPlan,
+          maxSlots: String(maxSlots),
         },
       });
 
+      console.log(`[Stripe] Checkout session created: plan=${selectedPlan}, priceId=${priceId}, maxSlots=${maxSlots}`);
       res.json({ url: session.url });
-    } catch (error) {
-      console.error("Error creating checkout session:", error);
-      res.status(500).json({ message: "Erreur lors de la creation de la session de paiement" });
+    } catch (error: any) {
+      console.error("[Stripe] Error creating checkout session:", error?.message || error);
+      if (error?.type === 'StripeInvalidRequestError') {
+        console.error("[Stripe] Stripe details:", error?.raw?.message);
+      }
+      res.status(500).json({ message: "Erreur lors de la creation de la session de paiement. Verifiez la configuration Stripe." });
     }
   });
 
