@@ -1022,19 +1022,32 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Wrong slot" });
       }
 
-      // Update appointment status to no-show
       await storage.updateAppointment(id, { status: "no-show" });
       
-      // Increment no-show counter for client
       const reliability = await storage.incrementNoShow(appointment.clientPhone, profile.id);
+      const noShowCount = reliability.noShowTotal || 1;
       
-      // Send warning message via WhatsApp
-      await whatsappManager.sendNoShowWarning(profile.id, slotId, appointment.clientPhone);
+      let blocked = false;
+      
+      if (noShowCount >= 2) {
+        await storage.addToBlacklist({
+          phone: appointment.clientPhone,
+          reason: `auto-block: ${noShowCount} no-shows`,
+          reportedBy: profile.id,
+        });
+        await whatsappManager.sendNoShowBlock(profile.id, slotId, appointment.clientPhone);
+        blocked = true;
+      } else {
+        await whatsappManager.sendNoShowWarning(profile.id, slotId, appointment.clientPhone);
+      }
       
       res.json({ 
         success: true, 
-        noShowTotal: reliability.noShowTotal,
-        message: "No-show marked and warning sent to client"
+        noShowTotal: noShowCount,
+        blocked,
+        message: blocked 
+          ? "No-show marked – client blocked permanently" 
+          : "No-show marked and warning sent to client"
       });
     } catch (error: any) {
       if (error.status === 400) return res.status(400).json({ message: error.message });

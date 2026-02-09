@@ -11,7 +11,9 @@ import {
   Clock,
   TrendingUp,
   MessageSquare,
-  ShieldAlert
+  ShieldAlert,
+  Euro,
+  Bot
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { format, isToday, isTomorrow, parseISO, type Locale } from "date-fns";
@@ -30,6 +32,9 @@ interface DashboardStats {
   totalClients: number;
   messagesThisWeek: number;
   dangerousClientsFiltered?: number;
+  confirmedThisMonth: number;
+  conversationsManaged: number;
+  estimatedRevenue: number;
 }
 
 interface UpcomingAppointment extends Appointment {
@@ -52,27 +57,34 @@ export default function DashboardPage() {
     queryKey: ["/api/appointments/upcoming"],
   });
 
+  const formatRevenue = (cents: number) => {
+    return `${(cents / 100).toFixed(0)}€`;
+  };
+
   const statCards = [
     {
-      title: t("dashboard.todayAppointments"),
-      value: stats?.todayAppointments ?? 0,
-      icon: Calendar,
+      title: t("dashboard.confirmedThisMonth"),
+      value: stats?.confirmedThisMonth ?? 0,
+      icon: CheckCircle,
       color: "text-primary",
       bgColor: "bg-primary/10",
+      testId: "stat-confirmed-month",
     },
     {
-      title: t("dashboard.weekAppointments"),
-      value: stats?.weekAppointments ?? 0,
-      icon: TrendingUp,
-      color: "text-blue-600",
-      bgColor: "bg-blue-100 dark:bg-blue-900/30",
+      title: t("dashboard.conversationsManaged"),
+      value: stats?.conversationsManaged ?? 0,
+      icon: Bot,
+      color: "text-cyan-500",
+      bgColor: "bg-cyan-500/10",
+      testId: "stat-conversations",
     },
     {
-      title: t("dashboard.completedThisMonth"),
-      value: stats?.completedThisMonth ?? 0,
-      icon: CheckCircle,
-      color: "text-green-600",
-      bgColor: "bg-green-100 dark:bg-green-900/30",
+      title: t("dashboard.estimatedRevenue"),
+      value: formatRevenue(stats?.estimatedRevenue ?? 0),
+      icon: Euro,
+      color: "text-green-500",
+      bgColor: "bg-green-500/10",
+      testId: "stat-revenue",
     },
     {
       title: t("dashboard.noShowsThisMonth"),
@@ -80,6 +92,31 @@ export default function DashboardPage() {
       icon: XCircle,
       color: "text-red-600",
       bgColor: "bg-red-100 dark:bg-red-900/30",
+      testId: "stat-noshows",
+    },
+    {
+      title: t("dashboard.todayAppointments"),
+      value: stats?.todayAppointments ?? 0,
+      icon: Calendar,
+      color: "text-primary",
+      bgColor: "bg-primary/10",
+      testId: "stat-today",
+    },
+    {
+      title: t("dashboard.weekAppointments"),
+      value: stats?.weekAppointments ?? 0,
+      icon: TrendingUp,
+      color: "text-blue-600",
+      bgColor: "bg-blue-100 dark:bg-blue-900/30",
+      testId: "stat-week",
+    },
+    {
+      title: t("dashboard.completedThisMonth"),
+      value: stats?.completedThisMonth ?? 0,
+      icon: CheckCircle,
+      color: "text-green-600",
+      bgColor: "bg-green-100 dark:bg-green-900/30",
+      testId: "stat-completed",
     },
     {
       title: t("dashboard.dangerousFiltered"),
@@ -88,6 +125,7 @@ export default function DashboardPage() {
       color: "text-red-500",
       bgColor: "bg-red-500/10",
       special: true,
+      testId: "stat-dangerous",
     },
   ];
 
@@ -129,26 +167,51 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        {statCards.map((stat, index) => (
-          <Card key={index} className={(stat as any).special ? "border-red-500/50" : ""}>
+      {/* Value Stats - Top Row */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {statCards.slice(0, 4).map((stat) => (
+          <Card key={stat.testId} className={(stat as any).special ? "border-red-500/50" : ""} data-testid={stat.testId}>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">{stat.title}</p>
                   {statsLoading ? (
                     <Skeleton className="h-8 w-12" />
                   ) : (
-                    <p className={`text-3xl font-bold ${(stat as any).special ? "text-red-500" : ""}`} data-testid={`text-stat-${index}`}>
+                    <p className={`text-3xl font-bold ${(stat as any).special ? "text-red-500" : ""}`} data-testid={`text-${stat.testId}`}>
                       {stat.value}
                     </p>
                   )}
-                  {(stat as any).special && stat.value > 0 && (
+                </div>
+                <div className={`h-12 w-12 rounded-lg ${stat.bgColor} flex items-center justify-center flex-shrink-0`}>
+                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Secondary Stats Row */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {statCards.slice(4).map((stat) => (
+          <Card key={stat.testId} className={(stat as any).special ? "border-red-500/50" : ""} data-testid={stat.testId}>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">{stat.title}</p>
+                  {statsLoading ? (
+                    <Skeleton className="h-8 w-12" />
+                  ) : (
+                    <p className={`text-3xl font-bold ${(stat as any).special ? "text-red-500" : ""}`} data-testid={`text-${stat.testId}`}>
+                      {stat.value}
+                    </p>
+                  )}
+                  {(stat as any).special && (stat.value as number) > 0 && (
                     <p className="text-xs text-red-400">{t("dashboard.protectionActive")}</p>
                   )}
                 </div>
-                <div className={`h-12 w-12 rounded-lg ${stat.bgColor} flex items-center justify-center`}>
+                <div className={`h-12 w-12 rounded-lg ${stat.bgColor} flex items-center justify-center flex-shrink-0`}>
                   <stat.icon className={`h-6 w-6 ${stat.color}`} />
                 </div>
               </div>

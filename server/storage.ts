@@ -98,6 +98,9 @@ export interface IStorage {
     completedThisMonth: number;
     noShowsThisMonth: number;
     totalClients: number;
+    confirmedThisMonth: number;
+    conversationsManaged: number;
+    estimatedRevenue: number;
   }>;
   
   // Client Reliability (No-Show Tracking)
@@ -424,7 +427,49 @@ export class DatabaseStorage implements IStorage {
       eq(appointments.providerId, providerId)
     );
 
-    // GDPR: messagesThisWeek removed - no message logging
+    const [confirmedResult] = await db.select({ count: count() }).from(appointments).where(
+      and(
+        eq(appointments.providerId, providerId),
+        gte(appointments.appointmentDate, startOfMonth),
+        lte(appointments.appointmentDate, endOfMonth),
+        eq(appointments.status, "confirmed")
+      )
+    );
+
+    const conversationsResult = await db.selectDistinct({ phone: conversationSessions.clientPhone }).from(conversationSessions).where(
+      eq(conversationSessions.providerId, providerId)
+    );
+
+    const revenueRows = await db.select({
+      duration: appointments.duration,
+      serviceId: appointments.serviceId,
+    }).from(appointments).where(
+      and(
+        eq(appointments.providerId, providerId),
+        gte(appointments.appointmentDate, startOfMonth),
+        lte(appointments.appointmentDate, endOfMonth),
+        eq(appointments.status, "completed")
+      )
+    );
+
+    let estimatedRevenue = 0;
+    if (revenueRows.length > 0) {
+      const serviceIds = Array.from(new Set(revenueRows.map(r => r.serviceId).filter(Boolean)));
+      const serviceMap = new Map<string, number>();
+      if (serviceIds.length > 0) {
+        const svcRows = await db.select({ id: services.id, price: services.price }).from(services).where(
+          sql`${services.id} IN (${sql.join(serviceIds.map(id => sql`${id}`), sql`, `)})`
+        );
+        for (const s of svcRows) {
+          serviceMap.set(s.id, s.price);
+        }
+      }
+      for (const row of revenueRows) {
+        if (row.serviceId && serviceMap.has(row.serviceId)) {
+          estimatedRevenue += serviceMap.get(row.serviceId)!;
+        }
+      }
+    }
 
     return {
       todayAppointments: todayResult?.count || 0,
@@ -432,6 +477,9 @@ export class DatabaseStorage implements IStorage {
       completedThisMonth: completedResult?.count || 0,
       noShowsThisMonth: noShowResult?.count || 0,
       totalClients: clientsResult?.length || 0,
+      confirmedThisMonth: confirmedResult?.count || 0,
+      conversationsManaged: conversationsResult?.length || 0,
+      estimatedRevenue,
     };
   }
 

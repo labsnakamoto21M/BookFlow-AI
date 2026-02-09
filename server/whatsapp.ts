@@ -592,7 +592,8 @@ Return ONLY the JSON object:`;
       return;
     }
 
-    await storage.isBlacklisted(clientPhone);
+    const blacklisted = await storage.isBlacklisted(clientPhone);
+    if (blacklisted) return;
 
     const state = await this.loadState(providerId, slotId, clientPhone);
     const nowUtc = new Date();
@@ -2016,7 +2017,12 @@ Reponds au dernier message.`;
   }
 
   async sendNoShowWarning(providerId: string, slotId: string, clientPhone: string): Promise<void> {
-    const message = "coucou, je vois que tu n'es pas venu... s'il te plait, ne reserve que si tu es certain de venir. mon systeme bloque les numeros apres deux absences, donc si tu rates le prochain, je ne pourrai plus te donner de rdv. on fait attention?";
+    const message = "desole, tu ne t'es pas presente... s'il te plait ne reserve que si tu es certain de venir. mon systeme bloque les numeros apres deux absences – si tu rates le prochain rdv, je ne pourrai plus te donner de creneau. on fait attention?";
+    await this.sendMessage(providerId, slotId, clientPhone, message);
+  }
+
+  async sendNoShowBlock(providerId: string, slotId: string, clientPhone: string): Promise<void> {
+    const message = "desole, tu as trop d'absences sans prevenir. ton numero est maintenant bloque definitivement et je ne pourrai plus te donner de rdv. prends soin de toi.";
     await this.sendMessage(providerId, slotId, clientPhone, message);
   }
 
