@@ -4,7 +4,7 @@ export const SUBSCRIPTION_PLANS = {
     shortName: "SOLO",
     price: 5900, // 59 EUR in cents
     slots: 1,
-    priceId: process.env.STRIPE_PRICE_SOLO || process.env.STRIPE_PRICE_ID,
+    priceId: process.env.STRIPE_PRICE_SOLO,
   },
   duo: {
     name: "Duo (2)",
@@ -35,6 +35,14 @@ export const SUBSCRIPTION_PLANS = {
     priceId: process.env.STRIPE_PRICE_AGENCY,
   },
 } as const;
+
+for (const [key, plan] of Object.entries(SUBSCRIPTION_PLANS)) {
+  if (plan.priceId) {
+    console.log(`[Stripe] Plan ${key.toUpperCase()}: price_id=${plan.priceId.slice(0, 12)}... (${plan.price / 100}€, ${plan.slots} slot${plan.slots > 1 ? 's' : ''})`);
+  } else {
+    console.warn(`[Stripe] WARNING: Plan ${key.toUpperCase()} has NO price ID configured (STRIPE_PRICE_${key.toUpperCase()} env missing)`);
+  }
+}
 
 export type SubscriptionPlanKey = keyof typeof SUBSCRIPTION_PLANS;
 

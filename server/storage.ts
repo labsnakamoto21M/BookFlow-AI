@@ -917,9 +917,7 @@ export class DatabaseStorage implements IStorage {
     const [noShowResult] = await db.select({ count: count() }).from(noShowReports);
     const totalNoShows = noShowResult?.count || 0;
     
-    // Estimated monthly revenue (active subscriptions * price)
-    // Assuming subscription price from STRIPE_PRICE_ID (we'll use a default of 29.99 EUR)
-    const estimatedMonthlyRevenue = activeSubscriptions * 2999; // in cents
+    const estimatedMonthlyRevenue = activeSubscriptions * 2999;
     
     return {
       totalUsers,
