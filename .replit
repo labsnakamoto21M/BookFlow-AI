@@ -46,8 +46,3 @@ integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_database:1.0.
 
 [userenv.shared]
 PUPPETEER_EXECUTABLE_PATH = "/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium"
-STRIPE_PRICE_SOLO = "price_1SxxDYBoDKI3q4PbzRHsjxmJ"
-STRIPE_PRICE_DUO = "price_1SxxELBoDKI3q4PbFOKwC0gB"
-STRIPE_PRICE_TRIO = "price_1SxxElBoDKI3q4PbDnbk2YEM"
-STRIPE_PRICE_HEXA = "price_1SxxG6BoDKI3q4PbcD5NnJqW"
-STRIPE_PRICE_AGENCY = "price_1SxxH1BoDKI3q4PbUTvlIF2k"
