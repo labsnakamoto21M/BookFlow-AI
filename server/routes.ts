@@ -1111,9 +1111,17 @@ export async function registerRoutes(
       });
 
       res.json({ url: session.url });
-    } catch (error) {
-      console.error("Error creating customer portal session:", error);
-      res.status(500).json({ message: "Erreur lors de la creation de la session" });
+    } catch (error: any) {
+      console.error("Error creating customer portal session:", error?.message || error);
+      if (error?.type === 'StripeInvalidRequestError' && error?.message?.includes('portal')) {
+        console.error("[Stripe Portal] Customer portal not activated. Enable it at: https://dashboard.stripe.com/test/settings/billing/portal");
+        return res.status(500).json({ message: "Portail Stripe non active - activez-le dans votre dashboard Stripe (Settings > Billing > Customer Portal)" });
+      }
+      if (error?.type === 'StripeAuthenticationError') {
+        console.error("[Stripe Portal] Invalid API key");
+        return res.status(500).json({ message: "Cle API Stripe invalide - verifiez la configuration" });
+      }
+      res.status(500).json({ message: "Erreur portail Stripe - verifiez dashboard activation" });
     }
   });
 

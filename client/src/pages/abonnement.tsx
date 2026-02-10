@@ -91,7 +91,7 @@ export default function AbonnementPage() {
     },
     onSuccess: (data) => {
       if (data.url) {
-        window.location.href = data.url;
+        window.open(data.url, '_blank');
       }
     },
     onError: (error: Error) => {
@@ -110,13 +110,13 @@ export default function AbonnementPage() {
     },
     onSuccess: (data) => {
       if (data.url) {
-        window.location.href = data.url;
+        window.open(data.url, '_blank');
       }
     },
     onError: (error: Error) => {
       toast({
         title: "Erreur",
-        description: error.message || "Impossible d'ouvrir le portail",
+        description: error.message || "Erreur portail Stripe - verifiez dashboard activation",
         variant: "destructive",
       });
     },
