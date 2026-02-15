@@ -407,6 +407,45 @@ Return ONLY the JSON object:`;
     }
   }
 
+  private async hydrateAuthFromDB(providerId: string, slotId: string): Promise<string> {
+    const authPath = `./auth_info_baileys/${providerId}_${slotId}`;
+    const credsFile = path.join(authPath, "creds.json");
+
+    if (fs.existsSync(credsFile) && fs.statSync(credsFile).size > 10) {
+      return "filesystem";
+    }
+
+    try {
+      const slot = await storage.getSlot(slotId);
+      if (slot?.whatsappSessionData) {
+        if (!fs.existsSync(authPath)) {
+          fs.mkdirSync(authPath, { recursive: true });
+        }
+        fs.writeFileSync(credsFile, slot.whatsappSessionData, "utf-8");
+        console.log(`[WA-BAILEYS] Hydrated creds.json from DB for slot ${slotId}`);
+        return "database";
+      }
+    } catch (err: any) {
+      console.error(`[WA-BAILEYS] Failed to hydrate from DB for slot ${slotId}:`, err?.message);
+    }
+
+    return "none";
+  }
+
+  private async saveCredsToDb(slotId: string, authPath: string): Promise<void> {
+    try {
+      const credsFile = path.join(authPath, "creds.json");
+      if (fs.existsSync(credsFile)) {
+        const credsData = fs.readFileSync(credsFile, "utf-8");
+        if (credsData && credsData.length > 10) {
+          await storage.updateSlot(slotId, { whatsappSessionData: credsData });
+        }
+      }
+    } catch (err: any) {
+      console.error(`[WA-BAILEYS] Failed to save creds to DB for slot ${slotId}:`, err?.message);
+    }
+  }
+
   async initSession(providerId: string, slotId: string): Promise<WhatsAppSession> {
     const key = this.sessionKey(providerId, slotId);
     if (this.sessions.has(key)) {
@@ -418,6 +457,9 @@ Return ONLY the JSON object:`;
       fs.mkdirSync(authPath, { recursive: true });
       console.log("[WA-BAILEYS] Session directory created:", authPath);
     }
+
+    const source = await this.hydrateAuthFromDB(providerId, slotId);
+    console.log(`[WA-BAILEYS] Auth source for slot ${slotId}: ${source}`);
 
     const now = Date.now();
     const session: WhatsAppSession = {
@@ -461,7 +503,10 @@ Return ONLY the JSON object:`;
 
       session.socket = socket;
 
-      socket.ev.on("creds.update", saveCreds);
+      socket.ev.on("creds.update", async () => {
+        await saveCreds();
+        await this.saveCredsToDb(slotId, authPath);
+      });
 
       socket.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -488,7 +533,8 @@ Return ONLY the JSON object:`;
           } else {
             this.sessions.delete(this.sessionKey(providerId, slotId));
             await this.cleanAuthFiles(providerId, slotId);
-            console.log(`[WA-BAILEYS] Auth files cleaned for provider: ${providerId}, slot: ${slotId}. Ready for new QR.`);
+            await storage.updateSlot(slotId, { whatsappConnected: false, whatsappSessionData: null });
+            console.log(`[WA-BAILEYS] Auth files + DB session cleaned for provider: ${providerId}, slot: ${slotId}. Ready for new QR.`);
           }
         } else if (connection === "open") {
           session.connected = true;
@@ -497,9 +543,23 @@ Return ONLY the JSON object:`;
           const user = socket.user;
           session.phoneNumber = user?.id?.split(":")[0] || user?.id?.split("@")[0] || null;
           
+          if (session.phoneNumber) {
+            const phoneCheck = await storage.isPhoneUsedByAnotherSlot(session.phoneNumber, slotId);
+            if (phoneCheck.used) {
+              console.error(`[WA-BAILEYS] PHONE CONFLICT: ${session.phoneNumber} already used by slot "${phoneCheck.slotName}" (provider=${phoneCheck.providerId}). Disconnecting slot ${slotId}.`);
+              try { socket.end(undefined); } catch (e) {}
+              this.sessions.delete(this.sessionKey(providerId, slotId));
+              await this.cleanAuthFiles(providerId, slotId);
+              await storage.updateSlot(slotId, { whatsappConnected: false, whatsappSessionData: null });
+              return;
+            }
+            await storage.updateSlot(slotId, { phone: session.phoneNumber });
+          }
+          
           console.log(`[WA-BAILEYS] Connected: providerId=${providerId}, slotId=${slotId}, phone=${session.phoneNumber}`);
           
           await storage.updateSlot(slotId, { whatsappConnected: true });
+          await this.saveCredsToDb(slotId, authPath);
         }
       });
 
@@ -1017,7 +1077,7 @@ Return ONLY the JSON object:`;
         await this.persistState(providerId, clientPhone, convState, slotId);
         return response;
       }
-      const response = await this.generateAvailableSlots(providerId, clientPhone, services, businessHours);
+      const response = await this.generateAvailableSlots(providerId, clientPhone, services, businessHours, slotId);
       convState.chatHistory.push({ role: "user", content: userMessage });
       convState.chatHistory.push({ role: "assistant", content: response });
       convState.offTopicCount = 0;
@@ -1849,13 +1909,12 @@ Reponds au dernier message.`;
     return response;
   }
 
-  private async generateAvailableSlots(providerId: string, clientPhone: string, services: any[], businessHours: any[]): Promise<string> {
-    // BRUSSELS TIMEZONE ONLY for all date operations
+  private async generateAvailableSlots(providerId: string, clientPhone: string, services: any[], businessHours: any[], slotId?: string): Promise<string> {
     const today = toZonedTime(new Date(), BRUSSELS_TZ);
     const tomorrow = addDays(today, 1);
 
-    const todaySlots = await this.getAvailableSlots(providerId, today, businessHours);
-    const tomorrowSlots = await this.getAvailableSlots(providerId, tomorrow, businessHours);
+    const todaySlots = await this.getAvailableSlots(providerId, today, businessHours, slotId || null);
+    const tomorrowSlots = await this.getAvailableSlots(providerId, tomorrow, businessHours, slotId || null);
 
     let response = "mes dispos:\n\n";
 
@@ -2080,8 +2139,8 @@ Reponds au dernier message.`;
     }
     this.sessions.delete(key);
     await this.cleanAuthFiles(providerId, slotId);
-    await storage.updateSlot(slotId, { whatsappConnected: false });
-    console.log(`[WA-BAILEYS] Disconnected and cleaned for provider: ${providerId}, slot: ${slotId}`);
+    await storage.updateSlot(slotId, { whatsappConnected: false, whatsappSessionData: null });
+    console.log(`[WA-BAILEYS] Disconnected and cleaned (DB + files) for provider: ${providerId}, slot: ${slotId}`);
   }
 
   async refreshQR(providerId: string, slotId: string): Promise<void> {
@@ -2124,7 +2183,7 @@ Reponds au dernier message.`;
     
     this.sessions.delete(key);
     await this.cleanAuthFiles(providerId, slotId);
-    await storage.updateSlot(slotId, { whatsappConnected: false });
+    await storage.updateSlot(slotId, { whatsappConnected: false, whatsappSessionData: null });
     
     await this.initSession(providerId, slotId);
     console.log(`[WA-BAILEYS] Force reconnect completed for provider: ${providerId}, slot: ${slotId}`);
@@ -2141,22 +2200,20 @@ Reponds au dernier message.`;
       console.log(`[WA-BAILEYS] Auto-reconnecting ${connectedSlots.length} slot(s)...`);
       
       for (const slot of connectedSlots) {
+        const hasDbSession = !!slot.whatsappSessionData && slot.whatsappSessionData.length > 10;
         const authPath = `./auth_info_baileys/${slot.providerId}_${slot.id}`;
-        if (!fs.existsSync(authPath)) {
-          console.warn(`[WA-BAILEYS] No auth files for slot ${slot.name} (${slot.id}) — skipping, needs new QR scan`);
+        const hasFiles = fs.existsSync(authPath) && fs.readdirSync(authPath).length > 0;
+
+        if (!hasDbSession && !hasFiles) {
+          console.warn(`[WA-BAILEYS] No auth (DB or filesystem) for slot ${slot.name} (${slot.id}) — needs new QR scan`);
           await storage.updateSlot(slot.id, { whatsappConnected: false });
           continue;
         }
-        
-        const authFiles = fs.readdirSync(authPath);
-        if (authFiles.length === 0) {
-          console.warn(`[WA-BAILEYS] Empty auth dir for slot ${slot.name} (${slot.id}) — skipping`);
-          await storage.updateSlot(slot.id, { whatsappConnected: false });
-          continue;
-        }
+
+        const source = hasDbSession ? (hasFiles ? "filesystem+DB" : "DB-only") : "filesystem-only";
         
         try {
-          console.log(`[WA-BAILEYS] Reconnecting slot: ${slot.name} (provider=${slot.providerId}, slot=${slot.id})`);
+          console.log(`[WA-BAILEYS] Reconnecting slot: ${slot.name} (provider=${slot.providerId}, slot=${slot.id}, source=${source})`);
           await this.initSession(slot.providerId, slot.id);
         } catch (err: any) {
           console.error(`[WA-BAILEYS] Failed to reconnect slot ${slot.name}:`, err?.message);

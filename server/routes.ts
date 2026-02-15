@@ -237,7 +237,8 @@ export async function registerRoutes(
     try {
       const profile = await getOrCreateProviderProfile(req);
       const slotsList = await storage.getSlots(profile.id);
-      res.json(slotsList);
+      const sanitized = slotsList.map(({ whatsappSessionData, ...rest }) => rest);
+      res.json(sanitized);
     } catch (error) {
       console.error("Error fetching slots:", error);
       res.status(500).json({ message: "Failed to fetch slots" });
@@ -304,7 +305,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/slots/:id", isAuthenticated, async (req: any, res) => {
+  const updateSlotHandler = async (req: any, res: any) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
       const { id } = req.params;
@@ -333,7 +334,9 @@ export async function registerRoutes(
       console.error("Error updating slot:", error);
       res.status(500).json({ message: "Failed to update slot" });
     }
-  });
+  };
+  app.patch("/api/slots/:id", isAuthenticated, updateSlotHandler);
+  app.put("/api/slots/:id", isAuthenticated, updateSlotHandler);
 
   app.delete("/api/slots/:id", isAuthenticated, async (req: any, res) => {
     try {

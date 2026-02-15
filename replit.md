@@ -51,9 +51,11 @@ Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Ma
 ### Multi-Slot WhatsApp Isolation
 - **Session Keying**: WhatsApp sessions Map keyed by `${providerId}_${slotId}` composite key
 - **Auth File Isolation**: Per-slot credential storage at `auth_info_baileys/${providerId}_${slotId}`
+- **DB-Backed Auth Persistence**: Baileys creds.json saved to `slots.whatsappSessionData` (JSON text) on every `creds.update` event. On init/reconnect, DB creds hydrated to disk first if filesystem files missing. Disconnect/logout clears both DB and filesystem.
+- **Reconnect Priority**: `hydrateAuthFromDB()` checks filesystem first, falls back to DB `whatsappSessionData`. `autoReconnectAll()` logs source (DB-only, filesystem-only, filesystem+DB).
 - **Conversation Scoping**: All conversation session queries require (providerId, slotId, clientPhone) triple
-- **Phone Uniqueness**: `isPhoneUsedByAnotherSlot()` validates phone uniqueness across entire system (409 on duplicate)
-- **Startup Auto-Reconnect**: `autoReconnectAll()` runs 3s after server boot, restores slots with whatsappConnected=true and valid auth files
+- **Phone Uniqueness**: `isPhoneUsedByAnotherSlot()` validates phone uniqueness across entire system (409 on duplicate). Also checked at WhatsApp connect time — if detected phone conflicts with another slot, connection is immediately terminated.
+- **Startup Auto-Reconnect**: `autoReconnectAll()` runs 3s after server boot, restores slots with whatsappConnected=true using DB session data (priority) or auth files (fallback)
 - **API Endpoints**: All WhatsApp routes (`/api/whatsapp/*`) require `slotId` parameter (query for GET, body for POST)
 - **Frontend**: whatsapp.tsx uses slot selector dropdown, per-slot QR/status display, localStorage persistence for active slot
 
