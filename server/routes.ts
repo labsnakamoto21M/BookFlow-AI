@@ -236,7 +236,30 @@ export async function registerRoutes(
   app.get("/api/slots", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await getOrCreateProviderProfile(req);
-      const slotsList = await storage.getSlots(profile.id);
+      let slotsList = await storage.getSlots(profile.id);
+
+      if (slotsList.length === 0 && profile.businessName) {
+        console.log(`[Legacy Migration] Auto-creating default Solo slot from Profil for provider ${profile.id}`);
+        try {
+          const defaultSlot = await storage.createSlot({
+            providerId: profile.id,
+            name: profile.businessName || "Solo",
+            phone: profile.phone || "",
+            addressApprox: profile.address || "",
+            addressExact: null,
+            city: profile.city || "",
+            customInstructions: profile.customInstructions || "",
+            externalProfileUrl: profile.externalProfileUrl || "",
+            availabilityMode: profile.availabilityMode || "active",
+            sortOrder: 0,
+          });
+          console.log(`[Legacy Migration] Default slot created: ${defaultSlot.id} for provider ${profile.id}`);
+          slotsList = [defaultSlot];
+        } catch (migrationError) {
+          console.error("[Legacy Migration] Failed to auto-create default slot:", migrationError);
+        }
+      }
+
       const sanitized = slotsList.map(({ whatsappSessionData, ...rest }) => rest);
       res.json(sanitized);
     } catch (error) {

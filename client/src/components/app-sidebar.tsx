@@ -15,9 +15,7 @@ import {
   Ghost,
   Moon,
   Users,
-  User,
 } from "lucide-react";
-import { SiWhatsapp } from "react-icons/si";
 import {
   Sidebar,
   SidebarContent,
@@ -64,20 +62,7 @@ const getMainMenuItems = (t: (key: string) => string) => [
   },
 ];
 
-const getWhatsappMenuItems = (t: (key: string) => string) => [
-  {
-    title: t("sidebar.whatsappConnection"),
-    url: "/whatsapp",
-    icon: SiWhatsapp,
-  },
-];
-
 const getAdminMenuItems = (t: (key: string) => string) => [
-  {
-    title: t("sidebar.profile"),
-    url: "/profile",
-    icon: User,
-  },
   {
     title: t("sidebar.reports"),
     url: "/signalements",
@@ -210,24 +195,6 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton asChild isActive={location === item.url} className="font-mono">
                     <Link href={item.url} data-testid={`link-${item.url.replace("/", "") || "dashboard"}`}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="font-mono text-primary/70">{"// "} {t("sidebar.whatsapp")}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {getWhatsappMenuItems(t).map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton asChild isActive={location === item.url} className="font-mono">
-                    <Link href={item.url} data-testid={`link-${item.url.replace("/", "")}`}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>

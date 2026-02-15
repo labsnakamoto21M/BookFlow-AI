@@ -997,9 +997,10 @@ Return ONLY the JSON object:`;
     if (slotId) {
       slot = await storage.getSlot(slotId);
     }
-    const effectiveCustomInstructions = slot?.customInstructions || profile.customInstructions || null;
-    const effectiveAddressApprox = slot?.addressApprox || profile.address || null;
+    const effectiveCustomInstructions = slot?.customInstructions || null;
+    const effectiveAddressApprox = slot?.addressApprox || null;
     const effectiveAddressExact = slot?.addressExact || null;
+    const effectiveExternalUrl = slot?.externalProfileUrl || "";
     
     if (!slotId) {
       console.error("[WA-AI] slotId required for generateAIResponse");
@@ -1162,7 +1163,7 @@ Return ONLY the JSON object:`;
     
     // PHOTO REQUEST: Deterministic redirect
     if (intent === "photo_request") {
-      const externalUrl = profile.externalProfileUrl || "";
+      const externalUrl = slot?.externalProfileUrl || "";
       const response = externalUrl 
         ? `regarde ici: ${externalUrl}. tu veux rdv?`
         : `pas de photos dispo. tu veux reserver un rdv?`;
@@ -1262,7 +1263,7 @@ Return ONLY the JSON object:`;
       return "desole bug interne. reessaie.";
     }
     
-    const externalUrl = profile.externalProfileUrl || "";
+    const externalUrl = slot?.externalProfileUrl || "";
     const todayFull = todaySlots.length === 0;
     const tomorrowAvailable = tomorrowSlots.length > 0;
     const ceSoirContext = todayFull && tomorrowAvailable 

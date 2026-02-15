@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -12,13 +13,25 @@ import {
   Wifi,
   WifiOff,
   Settings,
-  Hand
+  Hand,
+  QrCode,
+  RefreshCw,
+  X,
+  Smartphone,
+  Lock,
+  CreditCard,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Slot, ProviderProfile } from "@shared/schema";
+
+interface WhatsAppStatus {
+  connected: boolean;
+  qrCode?: string;
+  phoneNumber?: string;
+}
 
 const STATUS_CONFIG = {
   active: { 
@@ -38,7 +51,170 @@ const STATUS_CONFIG = {
   },
 } as const;
 
-function SlotCard({ slot }: { slot: Slot }) {
+function SlotWhatsAppPanel({ slot, isSubscribed }: { slot: Slot; isSubscribed: boolean }) {
+  const { toast } = useToast();
+  const [polling, setPolling] = useState(false);
+
+  const { data: status, refetch } = useQuery<WhatsAppStatus>({
+    queryKey: ["/api/whatsapp/status", { slotId: slot.id }],
+    queryFn: () => fetch(`/api/whatsapp/status?slotId=${slot.id}`, { credentials: "include" }).then(r => r.json()),
+    refetchInterval: polling ? 3000 : false,
+    enabled: isSubscribed,
+  });
+
+  useEffect(() => {
+    if (status?.connected) {
+      setPolling(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/slots"] });
+    }
+  }, [status?.connected]);
+
+  const connectMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/whatsapp/connect", { slotId: slot.id }),
+    onSuccess: () => {
+      setPolling(true);
+      refetch();
+      toast({ title: "Connexion lancee", description: "QR Code en cours de generation..." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Erreur", description: error.message || "Impossible de connecter", variant: "destructive" });
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/whatsapp/disconnect", { slotId: slot.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/status", { slotId: slot.id }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/slots"] });
+      toast({ title: "Deconnecte" });
+      setPolling(false);
+    },
+  });
+
+  const forceReconnectMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/whatsapp/force-reconnect", { slotId: slot.id }),
+    onSuccess: () => {
+      setPolling(true);
+      refetch();
+      toast({ title: "Reconnexion en cours..." });
+    },
+  });
+
+  if (!isSubscribed) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Lock className="h-3 w-3" />
+        <span>Abonnement requis</span>
+      </div>
+    );
+  }
+
+  if (status?.connected || slot.whatsappConnected) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/50 text-xs" data-testid={`badge-wa-online-${slot.id}`}>
+            <SiWhatsapp className="h-3 w-3 mr-1" />
+            <Wifi className="h-3 w-3 mr-1" />
+            ON
+          </Badge>
+          {status?.phoneNumber && (
+            <span className="font-mono text-xs text-muted-foreground">{status.phoneNumber}</span>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => disconnectMutation.mutate()}
+          disabled={disconnectMutation.isPending}
+          className="w-full font-mono text-xs text-destructive"
+          data-testid={`button-wa-disconnect-${slot.id}`}
+        >
+          <X className="h-3 w-3 mr-1" />
+          {disconnectMutation.isPending ? "..." : "Deconnecter"}
+        </Button>
+      </div>
+    );
+  }
+
+  if (status?.qrCode) {
+    return (
+      <div className="space-y-2 text-center">
+        <div className="p-2 bg-white rounded inline-block">
+          <img
+            src={status.qrCode}
+            alt="QR Code"
+            className="h-40 w-40"
+            data-testid={`img-qr-${slot.id}`}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Scannez avec WhatsApp
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => refetch()}
+          className="font-mono text-xs"
+          data-testid={`button-refresh-qr-${slot.id}`}
+        >
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Actualiser
+        </Button>
+      </div>
+    );
+  }
+
+  if (polling) {
+    return (
+      <div className="space-y-2 text-center">
+        <div className="h-16 w-16 mx-auto rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center animate-pulse">
+          <QrCode className="h-8 w-8 text-primary" />
+        </div>
+        <p className="font-mono text-xs text-primary">INITIALISATION...</p>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => refetch()}
+            className="font-mono text-xs flex-1"
+            data-testid={`button-check-${slot.id}`}
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Verifier
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => forceReconnectMutation.mutate()}
+            disabled={forceReconnectMutation.isPending}
+            className="font-mono text-xs flex-1"
+            data-testid={`button-force-${slot.id}`}
+          >
+            <RefreshCw className={`h-3 w-3 mr-1 ${forceReconnectMutation.isPending ? "animate-spin" : ""}`} />
+            Forcer
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => connectMutation.mutate()}
+      disabled={connectMutation.isPending}
+      className="w-full font-mono text-xs border-primary/30 text-primary"
+      data-testid={`button-wa-connect-${slot.id}`}
+    >
+      <SiWhatsapp className="h-3 w-3 mr-1" />
+      {connectMutation.isPending ? "Connexion..." : "Connecter WhatsApp"}
+    </Button>
+  );
+}
+
+function SlotCard({ slot, isSubscribed }: { slot: Slot; isSubscribed: boolean }) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const status = (slot.availabilityMode || "active") as keyof typeof STATUS_CONFIG;
@@ -90,20 +266,6 @@ function SlotCard({ slot }: { slot: Slot }) {
             <StatusIcon className="h-3 w-3 mr-1" />
             {config.label}
           </Badge>
-          
-          <div className="flex items-center gap-1">
-            {slot.whatsappConnected ? (
-              <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/50" data-testid={`badge-whatsapp-connected-${slot.id}`}>
-                <SiWhatsapp className="h-3 w-3 mr-1" />
-                <Wifi className="h-3 w-3" />
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="bg-muted text-muted-foreground" data-testid={`badge-whatsapp-disconnected-${slot.id}`}>
-                <SiWhatsapp className="h-3 w-3 mr-1" />
-                <WifiOff className="h-3 w-3" />
-              </Badge>
-            )}
-          </div>
         </div>
         
         {slot.phone && (
@@ -111,28 +273,30 @@ function SlotCard({ slot }: { slot: Slot }) {
             {slot.phone}
           </div>
         )}
-        
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            className="flex-1 font-mono text-xs"
-            onClick={() => toggleOverrideMutation.mutate()}
-            disabled={toggleOverrideMutation.isPending}
-            data-testid={`button-override-${slot.id}`}
-          >
-            {isManualOverride ? (
-              <>
-                <Zap className="h-3 w-3 mr-1" />
-                {t("overview.resumeBot")}
-              </>
-            ) : (
-              <>
-                <Hand className="h-3 w-3 mr-1" />
-                {t("overview.takeControl")}
-              </>
-            )}
-          </Button>
+
+        <div className="border-t border-primary/10 pt-3">
+          <SlotWhatsAppPanel slot={slot} isSubscribed={isSubscribed} />
         </div>
+        
+        <Button 
+          variant="outline" 
+          className="w-full font-mono text-xs"
+          onClick={() => toggleOverrideMutation.mutate()}
+          disabled={toggleOverrideMutation.isPending}
+          data-testid={`button-override-${slot.id}`}
+        >
+          {isManualOverride ? (
+            <>
+              <Zap className="h-3 w-3 mr-1" />
+              {t("overview.resumeBot")}
+            </>
+          ) : (
+            <>
+              <Hand className="h-3 w-3 mr-1" />
+              {t("overview.takeControl")}
+            </>
+          )}
+        </Button>
       </CardContent>
     </Card>
   );
@@ -194,6 +358,7 @@ export default function OverviewPage() {
   
   const maxSlots = profile?.maxSlots || 1;
   const currentCount = slotsList?.length || 0;
+  const isSubscribed = profile?.subscriptionStatus === "active";
   
   if (profileLoading || slotsLoading) {
     return (
@@ -223,10 +388,30 @@ export default function OverviewPage() {
           {currentCount}/{maxSlots} {t("overview.slots")}
         </Badge>
       </div>
+
+      {!isSubscribed && (
+        <Card className="border-yellow-500/30 bg-yellow-500/5" data-testid="card-subscribe-cta">
+          <CardContent className="flex items-center justify-between gap-4 p-4">
+            <div className="flex items-center gap-3">
+              <Lock className="h-5 w-5 text-yellow-500" />
+              <div>
+                <p className="font-mono text-sm font-bold">Abonnement requis</p>
+                <p className="text-xs text-muted-foreground">Abonnez-vous pour activer vos bots WhatsApp</p>
+              </div>
+            </div>
+            <Link href="/abonnement">
+              <Button size="sm" className="font-mono" data-testid="button-subscribe-overview">
+                <CreditCard className="h-4 w-4 mr-1" />
+                S'abonner
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
       
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" data-testid="grid-slots">
         {slotsList?.map((slot) => (
-          <SlotCard key={slot.id} slot={slot} />
+          <SlotCard key={slot.id} slot={slot} isSubscribed={isSubscribed} />
         ))}
         <AddSlotCard maxSlots={maxSlots} currentCount={currentCount} />
       </div>

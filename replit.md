@@ -57,7 +57,10 @@ Design aesthetic: Cypherpunk/Underground (pure black #000000 background, neon Ma
 - **Phone Uniqueness**: `isPhoneUsedByAnotherSlot()` validates phone uniqueness across entire system (409 on duplicate). Also checked at WhatsApp connect time — if detected phone conflicts with another slot, connection is immediately terminated.
 - **Startup Auto-Reconnect**: `autoReconnectAll()` runs 3s after server boot, restores slots with whatsappConnected=true using DB session data (priority) or auth files (fallback)
 - **API Endpoints**: All WhatsApp routes (`/api/whatsapp/*`) require `slotId` parameter (query for GET, body for POST)
-- **Frontend**: whatsapp.tsx uses slot selector dropdown, per-slot QR/status display, localStorage persistence for active slot
+- **Frontend**: WhatsApp connect/disconnect/QR integrated inline per-slot on Equipe/overview page. Standalone whatsapp.tsx kept for deep links but removed from sidebar.
+- **Strict Slot Data**: Bot handlers read ONLY from slot record (customInstructions, addressApprox, externalProfileUrl). No fallback to providerProfiles.
+- **Legacy Migration**: GET /api/slots auto-creates default "Solo" slot from Profil data (businessName→name, address→addressApprox, customInstructions, externalProfileUrl, city, phone) when provider has 0 slots.
+- **UI Consolidation**: Profil page hidden from sidebar, /profile redirects to /overview. All config fields (address, customInstructions, externalProfileUrl) live on slot-config form.
 
 ### Key Features
 1. **WhatsApp Bot**: Automated responses to client messages, appointment booking flow

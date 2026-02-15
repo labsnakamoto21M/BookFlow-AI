@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Save, Trash2, Zap, Moon, Ghost } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Zap, Moon, Ghost, Link as LinkIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -25,6 +25,7 @@ const createSlotFormSchema = (t: (key: string) => string) => z.object({
   city: z.string().optional(),
   availabilityMode: z.enum(["active", "away", "ghost"]),
   customInstructions: z.string().optional(),
+  externalProfileUrl: z.string().url().optional().or(z.literal("")),
 });
 
 type SlotFormData = z.infer<ReturnType<typeof createSlotFormSchema>>;
@@ -54,6 +55,7 @@ export default function SlotConfigPage() {
       city: "",
       availabilityMode: "active",
       customInstructions: "",
+      externalProfileUrl: "",
     },
   });
   
@@ -67,6 +69,7 @@ export default function SlotConfigPage() {
         city: slot.city || "",
         availabilityMode: (slot.availabilityMode as "active" | "away" | "ghost") || "active",
         customInstructions: slot.customInstructions || "",
+        externalProfileUrl: (slot as any).externalProfileUrl || "",
       });
     }
   }, [slot, form]);
@@ -314,6 +317,31 @@ export default function SlotConfigPage() {
                       {t("slotConfig.customInstructionsHint")}
                     </p>
                     <FormMessage data-testid="error-custom-instructions" />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="externalProfileUrl"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-mono flex items-center gap-2">
+                      <LinkIcon className="h-4 w-4" />
+                      Lien profil externe
+                    </FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...field} 
+                        placeholder="https://quartier-rouge.be/mon-profil"
+                        className="font-mono"
+                        data-testid="input-slot-external-url"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Lien envoye aux clients qui demandent des photos
+                    </p>
+                    <FormMessage data-testid="error-slot-external-url" />
                   </FormItem>
                 )}
               />
