@@ -448,8 +448,20 @@ Return ONLY the JSON object:`;
 
   async initSession(providerId: string, slotId: string): Promise<WhatsAppSession> {
     const key = this.sessionKey(providerId, slotId);
-    if (this.sessions.has(key)) {
-      return this.sessions.get(key)!;
+    const existingSession = this.sessions.get(key);
+    if (existingSession?.connected && existingSession.socket) {
+      console.log(`[WA-BAILEYS] Reusing connected session for ${key}`);
+      return existingSession;
+    }
+
+    if (existingSession) {
+      console.log(`[WA-BAILEYS] Found disconnected session for ${key}, cleaning...`);
+      try {
+        if (existingSession.socket) {
+          existingSession.socket.end(undefined);
+        }
+      } catch (e) {}
+      this.sessions.delete(key);
     }
 
     const authPath = `./auth_info_baileys/${providerId}_${slotId}`;
