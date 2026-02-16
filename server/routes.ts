@@ -816,11 +816,19 @@ export async function registerRoutes(
   // WhatsApp (slot-scoped: all endpoints require slotId)
   app.get("/api/whatsapp/status", isAuthenticated, async (req: any, res) => {
     try {
+      console.log("[DEBUG WA-STATUS] User:", req.user?.id, req.user?.email);
+
       const profile = await getOrCreateProviderProfile(req);
+      console.log("[DEBUG WA-STATUS] Profile:", profile.id);
+
       const slotId = req.query.slotId as string;
+      console.log("[DEBUG WA-STATUS] SlotId:", slotId);
+
       if (!slotId) return res.status(400).json({ message: "slotId required" });
-      
+
       const slot = await validateSlotOwnership(profile, slotId);
+      console.log("[DEBUG WA-STATUS] Slot validation:", slot ? "OK" : "FAILED");
+
       if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
       
       await whatsappManager.initSession(profile.id, slotId);
