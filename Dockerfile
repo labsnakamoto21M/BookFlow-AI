@@ -5,17 +5,17 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (dev + prod for build)
+RUN npm ci
 
 # Copy source code
 COPY . .
 
-# Build
+# Build during Docker build phase
 RUN npm run build
 
 # Expose port
 EXPOSE 5000
 
-# Start
-CMD ["npm", "start"]
+# Start the already-built server
+CMD ["node", "dist/index.cjs"]
