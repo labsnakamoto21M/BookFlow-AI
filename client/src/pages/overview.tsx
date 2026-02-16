@@ -70,7 +70,7 @@ function SlotWhatsAppPanel({ slot, isSubscribed }: { slot: Slot; isSubscribed: b
   }, [status?.connected]);
 
   const connectMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/whatsapp/connect", { slotId: slot.id }),
+    mutationFn: () => apiRequest("POST", "/api/whatsapp/refresh-qr", { slotId: slot.id }),
     onSuccess: () => {
       setPolling(true);
       refetch();
