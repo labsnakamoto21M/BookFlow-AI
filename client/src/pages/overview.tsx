@@ -57,10 +57,10 @@ function SlotWhatsAppPanel({ slot, isSubscribed }: { slot: Slot; isSubscribed: b
 
   const { data: status, refetch } = useQuery<WhatsAppStatus>({
     queryKey: ["/api/whatsapp/status", { slotId: slot.id }],
-    queryFn: () => fetch(`/api/whatsapp/status?slotId=${slot.id}`, { credentials: "include" }).then(r => r.json()),
     refetchInterval: polling ? 3000 : false,
     enabled: isSubscribed,
   });
+
 
   useEffect(() => {
     if (status?.connected) {

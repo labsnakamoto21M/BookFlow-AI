@@ -66,10 +66,10 @@ export default function WhatsAppPage() {
 
   const { data: status, isLoading, refetch } = useQuery<WhatsAppStatus>({
     queryKey: ["/api/whatsapp/status", { slotId: activeSlotId }],
-    queryFn: () => fetch(`/api/whatsapp/status?slotId=${activeSlotId}`, { credentials: "include" }).then(r => r.json()),
     refetchInterval: pollingEnabled && isSubscribed && activeSlotId ? 3000 : false,
     enabled: isSubscribed && !!activeSlotId,
   });
+
 
   useEffect(() => {
     if (status?.connected) {
