@@ -232,13 +232,26 @@ export class DatabaseStorage implements IStorage {
 
   async upsertBusinessHours(hours: InsertBusinessHours[]): Promise<BusinessHours[]> {
     if (hours.length === 0) return [];
-    
+
     const providerId = hours[0].providerId;
-    await db.delete(businessHours).where(eq(businessHours.providerId, providerId));
-    
-    const results = await db.insert(businessHours).values(hours).returning();
-    return results;
+    const slotId = hours[0].slotId;
+
+    for (const h of hours) {
+      if (h.providerId !== providerId || h.slotId !== slotId) {
+        throw new Error("upsertBusinessHours: mixed providerId/slotId in payload");
+      }
+    }
+
+    await db.delete(businessHours).where(
+      and(
+        eq(businessHours.providerId, providerId),
+        eq(businessHours.slotId, slotId)
+      )
+    );
+
+    return db.insert(businessHours).values(hours).returning();
   }
+
 
   // Appointments (slot-scoped)
   async getAppointments(providerId: string, startDate: Date, endDate: Date, slotId: string): Promise<Appointment[]> {
@@ -589,14 +602,18 @@ export class DatabaseStorage implements IStorage {
   }
   
   async upsertBasePrice(price: InsertBasePrice): Promise<BasePrice> {
-    // Check if exists
+    if (!price.providerId || !price.slotId || !price.duration) {
+      throw new Error("upsertBasePrice: providerId, slotId, duration are required");
+    }
+
     const [existing] = await db.select().from(basePrices).where(
       and(
         eq(basePrices.providerId, price.providerId),
+        eq(basePrices.slotId, price.slotId),
         eq(basePrices.duration, price.duration)
       )
     );
-    
+
     if (existing) {
       const [result] = await db.update(basePrices)
         .set(price)
@@ -604,16 +621,8 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return result;
     }
-    
+
     const [result] = await db.insert(basePrices).values(price).returning();
-    return result;
-  }
-  
-  async updateBasePrice(id: string, updates: Partial<InsertBasePrice>): Promise<BasePrice | undefined> {
-    const [result] = await db.update(basePrices)
-      .set(updates)
-      .where(eq(basePrices.id, id))
-      .returning();
     return result;
   }
   
@@ -624,13 +633,18 @@ export class DatabaseStorage implements IStorage {
   }
   
   async upsertServiceExtra(extra: InsertServiceExtra): Promise<ServiceExtra> {
+    if (!extra.providerId || !extra.slotId || !extra.extraType) {
+      throw new Error("upsertServiceExtra: providerId, slotId, extraType are required");
+    }
+
     const [existing] = await db.select().from(serviceExtras).where(
       and(
         eq(serviceExtras.providerId, extra.providerId),
+        eq(serviceExtras.slotId, extra.slotId),
         eq(serviceExtras.extraType, extra.extraType)
       )
     );
-    
+
     if (existing) {
       const [result] = await db.update(serviceExtras)
         .set(extra)
@@ -638,7 +652,7 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return result;
     }
-    
+
     const [result] = await db.insert(serviceExtras).values(extra).returning();
     return result;
   }

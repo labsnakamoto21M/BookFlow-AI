@@ -527,6 +527,10 @@ Return ONLY the JSON object:`;
           console.log("[WA-BAILEYS] QR Code received!");
           session.qrCode = await qrcode.toDataURL(qr);
           session.connected = false;
+          console.log("[WA-DEBUG] QR STORED", {
+            key: this.sessionKey(providerId, slotId),
+            qrLength: session.qrCode?.length,
+          });
         }
 
         if (connection === "close") {
@@ -2128,6 +2132,7 @@ Reponds au dernier message.`;
 
   getStatus(providerId: string, slotId: string): { connected: boolean; qrCode: string | null; phoneNumber: string | null } {
     const session = this.sessions.get(this.sessionKey(providerId, slotId));
+    console.log("[WA-DEBUG] getStatus key=", this.sessionKey(providerId, slotId), "qrLen=", session?.qrCode?.length ?? 0, "connected=", session?.connected ?? false);
     return {
       connected: session?.connected || false,
       qrCode: session?.qrCode || null,
