@@ -9,6 +9,7 @@ import { WebhookHandlers } from "./webhookHandlers";
 import { whatsappManager } from "./whatsapp";
 
 const app = express();
+app.set("etag", false);
 
 app.use(helmet({
   contentSecurityPolicy: false,

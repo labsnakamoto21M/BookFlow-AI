@@ -816,6 +816,11 @@ export async function registerRoutes(
   // WhatsApp (slot-scoped: all endpoints require slotId)
   app.get("/api/whatsapp/status", isAuthenticated, async (req: any, res) => {
     try {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Surrogate-Control", "no-store");
+      
       console.log("[DEBUG] User authenticated:", req.user?.id);
 
       const profile = await getOrCreateProviderProfile(req);
