@@ -3,52 +3,85 @@ import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { runMigrations } from 'stripe-replit-sync';
-import { getStripeSync } from "./stripeClient";
-import { WebhookHandlers } from "./webhookHandlers";
-import { whatsappManager } from "./whatsapp";
+
+// --- Crash visibility (utile sur Railway) ---
+process.on("unhandledRejection", (err) => {
+  console.error("[FATAL] unhandledRejection", err);
+  process.exit(1);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] uncaughtException", err);
+  process.exit(1);
+});
+
+// --- Feature flags ---
+const DISABLE_STRIPE = process.env.DISABLE_STRIPE === "1";
+const DISABLE_WHATSAPP = process.env.DISABLE_WHATSAPP === "1";
+
+console.log("[BOOT] starting", {
+  nodeEnv: process.env.NODE_ENV,
+  port: process.env.PORT,
+  disableStripe: DISABLE_STRIPE,
+  disableWhatsapp: DISABLE_WHATSAPP,
+  databaseUrlSet: Boolean(process.env.DATABASE_URL),
+});
 
 const app = express();
 app.set("etag", false);
 
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false,
-}));
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }),
+);
 app.disable("x-powered-by");
+
 const httpServer = createServer(app);
 
+// Keep compatibility with your existing raw-body logic
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
   }
 }
 
+/**
+ * Stripe webhook MUST receive raw body.
+ * We keep the endpoint always available, but if Stripe is disabled we return 503.
+ */
 app.post(
-  '/api/stripe/webhook',
-  express.raw({ type: 'application/json' }),
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
   async (req, res) => {
-    const signature = req.headers['stripe-signature'];
+    if (DISABLE_STRIPE) {
+      return res.status(503).json({ error: "Stripe disabled" });
+    }
 
+    const signature = req.headers["stripe-signature"];
     if (!signature) {
-      return res.status(400).json({ error: 'Missing stripe-signature' });
+      return res.status(400).json({ error: "Missing stripe-signature" });
     }
 
     try {
       const sig = Array.isArray(signature) ? signature[0] : signature;
 
       if (!Buffer.isBuffer(req.body)) {
-        console.error('[Stripe Webhook] req.body is not a Buffer');
-        return res.status(500).json({ error: 'Webhook processing error' });
+        console.error("[Stripe Webhook] req.body is not a Buffer");
+        return res.status(500).json({ error: "Webhook processing error" });
       }
 
+      // Lazy import to avoid crashing at process startup
+      const { WebhookHandlers } = await import("./webhookHandlers");
       await WebhookHandlers.processWebhook(req.body as Buffer, sig);
-      res.status(200).json({ received: true });
+
+      return res.status(200).json({ received: true });
     } catch (error: any) {
-      console.error('[Stripe Webhook] Error:', error.message);
-      res.status(400).json({ error: 'Webhook processing error' });
+      console.error("[Stripe Webhook] Error:", error?.stack || error?.message || error);
+      return res.status(400).json({ error: "Webhook processing error" });
     }
-  }
+  },
 );
 
 app.use(
@@ -58,7 +91,6 @@ app.use(
     },
   }),
 );
-
 app.use(express.urlencoded({ extended: false }));
 
 export function log(message: string, source = "express") {
@@ -72,6 +104,7 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+// API request logger (same behavior as your current file)
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -90,7 +123,6 @@ app.use((req, res, next) => {
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-
       log(logLine);
     }
   });
@@ -99,42 +131,63 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (databaseUrl) {
-    try {
-      console.log('[Stripe] Initializing schema...');
-      await runMigrations({ databaseUrl });
-      console.log('[Stripe] Schema ready');
+  // --- Stripe init (optional / non-blocking) ---
+  if (!DISABLE_STRIPE) {
+    const databaseUrl = process.env.DATABASE_URL;
 
-      const stripeSync = await getStripeSync();
-      const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-      if (webhookBaseUrl && webhookBaseUrl !== 'https://undefined') {
-        try {
-          const result = await stripeSync.findOrCreateManagedWebhook(
-            `${webhookBaseUrl}/api/stripe/webhook`
-          );
-          if (result?.webhook?.url) {
-            console.log(`[Stripe] Webhook configured: ${result.webhook.url}`);
-          } else {
-            console.log('[Stripe] Webhook setup skipped (no URL returned)');
+    if (databaseUrl) {
+      try {
+        console.log("[Stripe] Initializing schema...");
+
+        // Lazy import to avoid startup crash
+        const { runMigrations } = await import("stripe-replit-sync");
+        await runMigrations({ databaseUrl });
+
+        console.log("[Stripe] Schema ready");
+
+        const { getStripeSync } = await import("./stripeClient");
+        const stripeSync = await getStripeSync();
+
+        // REPLIT_DOMAINS usually not set on Railway; keep behavior safe
+        const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0];
+        const webhookBaseUrl = replitDomain ? `https://${replitDomain}` : undefined;
+
+        if (webhookBaseUrl) {
+          try {
+            const result = await stripeSync.findOrCreateManagedWebhook(
+              `${webhookBaseUrl}/api/stripe/webhook`,
+            );
+
+            if (result?.webhook?.url) {
+              console.log(`[Stripe] Webhook configured: ${result.webhook.url}`);
+            } else {
+              console.log("[Stripe] Webhook setup skipped (no URL returned)");
+            }
+          } catch (webhookError: any) {
+            console.log("[Stripe] Webhook setup skipped:", webhookError?.message || webhookError);
           }
-        } catch (webhookError) {
-          console.log('[Stripe] Webhook setup skipped:', (webhookError as Error).message);
+        } else {
+          console.log("[Stripe] Webhook setup skipped (no domain configured)");
         }
-      } else {
-        console.log('[Stripe] Webhook setup skipped (no domain configured)');
-      }
 
-      stripeSync.syncBackfill()
-        .then(() => console.log('[Stripe] Data synced'))
-        .catch((err: any) => console.error('[Stripe] Sync error:', err));
-    } catch (error) {
-      console.error('[Stripe] Initialization failed:', error);
+        stripeSync
+          .syncBackfill()
+          .then(() => console.log("[Stripe] Data synced"))
+          .catch((err: any) => console.error("[Stripe] Sync error:", err?.stack || err));
+      } catch (error: any) {
+        console.error("[Stripe] Initialization failed:", error?.stack || error?.message || error);
+      }
+    } else {
+      console.log("[Stripe] Skipped (DATABASE_URL not set)");
     }
+  } else {
+    console.log("[Stripe] Disabled (DISABLE_STRIPE=1)");
   }
 
+  // --- Routes ---
   await registerRoutes(httpServer, app);
 
+  // --- Error handler ---
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -144,13 +197,10 @@ app.use((req, res, next) => {
     if (res.headersSent) {
       return next(err);
     }
-
     return res.status(status).json({ message });
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // --- Static / Vite ---
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -158,10 +208,7 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
+  // --- Listen ---
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {
@@ -171,14 +218,20 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
-      
-      setTimeout(async () => {
-        try {
-          await whatsappManager.autoReconnectAll();
-        } catch (err) {
-          console.error("[WA-BAILEYS] Startup auto-reconnect failed:", err);
-        }
-      }, 3000);
+
+      // WhatsApp auto-reconnect should never block server startup
+      if (!DISABLE_WHATSAPP) {
+        setTimeout(async () => {
+          try {
+            const { whatsappManager } = await import("./whatsapp");
+            await whatsappManager.autoReconnectAll();
+          } catch (err: any) {
+            console.error("[WA-BAILEYS] Startup auto-reconnect failed:", err?.stack || err);
+          }
+        }, 3000);
+      } else {
+        console.log("[WhatsApp] Disabled (DISABLE_WHATSAPP=1)");
+      }
     },
   );
 })();
