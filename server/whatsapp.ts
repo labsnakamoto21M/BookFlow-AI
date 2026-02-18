@@ -541,7 +541,9 @@ Return ONLY the JSON object:`;
           
           session.connected = false;
           session.phoneNumber = null;
-          session.qrCode = null;
+          if (!shouldReconnect) {
+            session.qrCode = null;
+          }
           await storage.updateSlot(slotId, { whatsappConnected: false });
 
           if (shouldReconnect) {

@@ -95,20 +95,30 @@ export default function WhatsAppPage() {
   });
 
   const refreshQRMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/whatsapp/refresh-qr", { slotId: activeSlotId }),
-    onSuccess: () => {
-      refetch();
-      toast({ title: "Succes", description: "QR Code actualise" });
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/whatsapp/refresh-qr", { slotId: activeSlotId });
+      return res.json();
+    },
+    onSuccess: (data: WhatsAppStatus) => {
+      queryClient.setQueryData(["/api/whatsapp/status", { slotId: activeSlotId }], data);
+      if (data.qrCode) {
+        toast({ title: "QR Code pret", description: "Scannez avec WhatsApp" });
+      } else {
+        toast({ title: "Erreur QR", description: "Erreur QR - reessayez", variant: "destructive" });
+      }
     },
     onError: () => {
-      toast({ title: "Erreur", description: "Impossible d'actualiser le QR Code", variant: "destructive" });
+      toast({ title: "Erreur", description: "Erreur QR - reessayez", variant: "destructive" });
     },
   });
 
   const forceReconnectMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/whatsapp/force-reconnect", { slotId: activeSlotId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/status", { slotId: activeSlotId }] });
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/whatsapp/force-reconnect", { slotId: activeSlotId });
+      return res.json();
+    },
+    onSuccess: (data: WhatsAppStatus) => {
+      queryClient.setQueryData(["/api/whatsapp/status", { slotId: activeSlotId }], data);
       setPollingEnabled(true);
       toast({ title: "Succes", description: "Reconnexion en cours..." });
     },

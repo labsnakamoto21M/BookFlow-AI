@@ -70,14 +70,21 @@ function SlotWhatsAppPanel({ slot, isSubscribed }: { slot: Slot; isSubscribed: b
   }, [status?.connected]);
 
   const connectMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/whatsapp/refresh-qr", { slotId: slot.id }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/whatsapp/connect", { slotId: slot.id });
+      return res.json();
+    },
+    onSuccess: (data: WhatsAppStatus) => {
       setPolling(true);
-      refetch();
-      toast({ title: "Connexion lancee", description: "QR Code en cours de generation..." });
+      queryClient.setQueryData(["/api/whatsapp/status", { slotId: slot.id }], data);
+      if (data.qrCode) {
+        toast({ title: "QR Code pret", description: "Scannez avec WhatsApp" });
+      } else {
+        toast({ title: "Connexion lancee", description: "QR Code en cours de generation..." });
+      }
     },
     onError: (error: any) => {
-      toast({ title: "Erreur", description: error.message || "Impossible de connecter", variant: "destructive" });
+      toast({ title: "Erreur QR", description: error.message || "Erreur QR - reessayez", variant: "destructive" });
     },
   });
 
@@ -92,10 +99,13 @@ function SlotWhatsAppPanel({ slot, isSubscribed }: { slot: Slot; isSubscribed: b
   });
 
   const forceReconnectMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/whatsapp/force-reconnect", { slotId: slot.id }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/whatsapp/force-reconnect", { slotId: slot.id });
+      return res.json();
+    },
+    onSuccess: (data: WhatsAppStatus) => {
       setPolling(true);
-      refetch();
+      queryClient.setQueryData(["/api/whatsapp/status", { slotId: slot.id }], data);
       toast({ title: "Reconnexion en cours..." });
     },
   });

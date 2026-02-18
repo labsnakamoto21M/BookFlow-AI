@@ -820,32 +820,49 @@ export async function registerRoutes(
       res.setHeader("Pragma", "no-cache");
       res.setHeader("Expires", "0");
       res.setHeader("Surrogate-Control", "no-store");
-      
-      console.log("[DEBUG] User authenticated:", req.user?.id);
 
       const profile = await getOrCreateProviderProfile(req);
-      console.log("[DEBUG] Provider profile:", profile.id);
-
       const slotId = req.query.slotId as string;
-      console.log("[DEBUG] Requested slotId:", slotId);
-
       if (!slotId) return res.status(400).json({ message: "slotId required" });
 
       const slot = await validateSlotOwnership(profile, slotId);
-      console.log("[DEBUG] Slot validation:", slot ? "OK" : "FAILED");
-
       if (!slot) {
-        console.error("[DEBUG] Slot not found. Profile:", profile.id, "SlotId:", slotId);
         return res.status(403).json({ message: "Slot not found or forbidden" });
       }
-      
-      await whatsappManager.initSession(profile.id, slotId);
       
       const status = whatsappManager.getStatus(profile.id, slotId);
       res.json(status);
     } catch (error) {
       console.error("Error fetching WhatsApp status:", error);
       res.status(500).json({ message: "Failed to fetch WhatsApp status" });
+    }
+  });
+
+  app.post("/api/whatsapp/connect", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await getOrCreateProviderProfile(req);
+      const slotId = req.body.slotId as string;
+      if (!slotId) return res.status(400).json({ message: "slotId required" });
+      
+      const slot = await validateSlotOwnership(profile, slotId);
+      if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
+      
+      await whatsappManager.initSession(profile.id, slotId);
+      
+      const maxWait = 10000;
+      const interval = 500;
+      const start = Date.now();
+      let status = whatsappManager.getStatus(profile.id, slotId);
+      
+      while (!status.qrCode && !status.connected && (Date.now() - start) < maxWait) {
+        await new Promise(r => setTimeout(r, interval));
+        status = whatsappManager.getStatus(profile.id, slotId);
+      }
+      
+      res.json(status);
+    } catch (error) {
+      console.error("Error connecting WhatsApp:", error);
+      res.status(500).json({ message: "Erreur connexion WhatsApp" });
     }
   });
 
@@ -875,17 +892,21 @@ export async function registerRoutes(
       const slot = await validateSlotOwnership(profile, slotId);
       if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
 
-      // Refresh QR Code
       await whatsappManager.refreshQR(profile.id, slotId);
 
-      // Get status WITH the QR Code
-      const status = whatsappManager.getStatus(profile.id, slotId);
+      const maxWait = 10000;
+      const interval = 500;
+      const start = Date.now();
+      let status = whatsappManager.getStatus(profile.id, slotId);
+      
+      while (!status.qrCode && !status.connected && (Date.now() - start) < maxWait) {
+        await new Promise(r => setTimeout(r, interval));
+        status = whatsappManager.getStatus(profile.id, slotId);
+      }
 
-      console.log("[DEBUG] refresh-qr response:", {
-        connected: status.connected,
-        hasQrCode: !!status.qrCode,
-        qrLength: status.qrCode?.length || 0
-      });
+      if (!status.qrCode && !status.connected) {
+        return res.status(202).json({ ...status, message: "Erreur QR - reessayez" });
+      }
 
       res.json(status);
     } catch (error) {
@@ -904,7 +925,17 @@ export async function registerRoutes(
       if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
       
       await whatsappManager.forceReconnect(profile.id, slotId);
-      const status = whatsappManager.getStatus(profile.id, slotId);
+      
+      const maxWait = 10000;
+      const interval = 500;
+      const start = Date.now();
+      let status = whatsappManager.getStatus(profile.id, slotId);
+      
+      while (!status.qrCode && !status.connected && (Date.now() - start) < maxWait) {
+        await new Promise(r => setTimeout(r, interval));
+        status = whatsappManager.getStatus(profile.id, slotId);
+      }
+
       res.json(status);
     } catch (error) {
       console.error("Error force reconnecting WhatsApp:", error);
