@@ -1,8 +1,9 @@
 import express, { type Request, Response, NextFunction } from "express";
 import helmet from "helmet";
+import { createServer } from "http";
+
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
-import { createServer } from "http";
 
 // --- Crash visibility (utile sur Railway) ---
 process.on("unhandledRejection", (err) => {
@@ -15,16 +16,24 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 
-// --- Feature flags ---
+// --- Feature flags / config ---
 const DISABLE_STRIPE = process.env.DISABLE_STRIPE === "1";
 const DISABLE_WHATSAPP = process.env.DISABLE_WHATSAPP === "1";
+
+// Stripe init lourd (migrations/sync/webhook auto-config) -> OFF par défaut
+const ENABLE_STRIPE_INIT = process.env.ENABLE_STRIPE_INIT === "1";
+
+// Sur Railway, définis PUBLIC_BASE_URL = https://xxxxx.up.railway.app
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
 
 console.log("[BOOT] starting", {
   nodeEnv: process.env.NODE_ENV,
   port: process.env.PORT,
-  disableStripe: DISABLE_STRIPE,
-  disableWhatsapp: DISABLE_WHATSAPP,
   databaseUrlSet: Boolean(process.env.DATABASE_URL),
+  disableStripe: DISABLE_STRIPE,
+  enableStripeInit: ENABLE_STRIPE_INIT,
+  disableWhatsapp: DISABLE_WHATSAPP,
+  publicBaseUrlSet: Boolean(PUBLIC_BASE_URL),
 });
 
 const app = express();
@@ -40,7 +49,7 @@ app.disable("x-powered-by");
 
 const httpServer = createServer(app);
 
-// Keep compatibility with your existing raw-body logic
+// Pour compat raw-body logic (si tu l’utilises ailleurs)
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -48,8 +57,8 @@ declare module "http" {
 }
 
 /**
- * Stripe webhook MUST receive raw body.
- * We keep the endpoint always available, but if Stripe is disabled we return 503.
+ * Stripe webhook: DOIT recevoir le body brut (raw)
+ * -> on le place avant express.json()
  */
 app.post(
   "/api/stripe/webhook",
@@ -72,7 +81,7 @@ app.post(
         return res.status(500).json({ error: "Webhook processing error" });
       }
 
-      // Lazy import to avoid crashing at process startup
+      // Lazy import: évite crash au boot
       const { WebhookHandlers } = await import("./webhookHandlers");
       await WebhookHandlers.processWebhook(req.body as Buffer, sig);
 
@@ -84,6 +93,7 @@ app.post(
   },
 );
 
+// JSON body parser (après le webhook)
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -104,11 +114,11 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-// API request logger (same behavior as your current file)
+// Logger API (comme ton ancien fichier)
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  let capturedJsonResponse: Record<string, any> | undefined;
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
@@ -131,15 +141,20 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // --- Stripe init (optional / non-blocking) ---
-  if (!DISABLE_STRIPE) {
+  // --- Stripe init (non bloquant, contrôlé) ---
+  if (DISABLE_STRIPE) {
+    console.log("[Stripe] Disabled (DISABLE_STRIPE=1)");
+  } else if (!ENABLE_STRIPE_INIT) {
+    console.log("[Stripe] Init skipped (ENABLE_STRIPE_INIT!=1)");
+  } else {
     const databaseUrl = process.env.DATABASE_URL;
-
-    if (databaseUrl) {
+    if (!databaseUrl) {
+      console.log("[Stripe] Init skipped (DATABASE_URL not set)");
+    } else {
       try {
         console.log("[Stripe] Initializing schema...");
 
-        // Lazy import to avoid startup crash
+        // Lazy import pour éviter crash au boot
         const { runMigrations } = await import("stripe-replit-sync");
         await runMigrations({ databaseUrl });
 
@@ -148,15 +163,11 @@ app.use((req, res, next) => {
         const { getStripeSync } = await import("./stripeClient");
         const stripeSync = await getStripeSync();
 
-        // REPLIT_DOMAINS usually not set on Railway; keep behavior safe
-        const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0];
-        const webhookBaseUrl = replitDomain ? `https://${replitDomain}` : undefined;
-
-        if (webhookBaseUrl) {
+        // Sur Railway: utiliser PUBLIC_BASE_URL (pas REPLIT_DOMAINS)
+        if (PUBLIC_BASE_URL) {
           try {
-            const result = await stripeSync.findOrCreateManagedWebhook(
-              `${webhookBaseUrl}/api/stripe/webhook`,
-            );
+            const url = `${PUBLIC_BASE_URL.replace(/\/$/, "")}/api/stripe/webhook`;
+            const result = await stripeSync.findOrCreateManagedWebhook(url);
 
             if (result?.webhook?.url) {
               console.log(`[Stripe] Webhook configured: ${result.webhook.url}`);
@@ -167,9 +178,10 @@ app.use((req, res, next) => {
             console.log("[Stripe] Webhook setup skipped:", webhookError?.message || webhookError);
           }
         } else {
-          console.log("[Stripe] Webhook setup skipped (no domain configured)");
+          console.log("[Stripe] Webhook auto-config skipped (PUBLIC_BASE_URL not set)");
         }
 
+        // Backfill / sync (peut être long): garde-le, mais non bloquant
         stripeSync
           .syncBackfill()
           .then(() => console.log("[Stripe] Data synced"))
@@ -177,11 +189,7 @@ app.use((req, res, next) => {
       } catch (error: any) {
         console.error("[Stripe] Initialization failed:", error?.stack || error?.message || error);
       }
-    } else {
-      console.log("[Stripe] Skipped (DATABASE_URL not set)");
     }
-  } else {
-    console.log("[Stripe] Disabled (DISABLE_STRIPE=1)");
   }
 
   // --- Routes ---
@@ -191,12 +199,9 @@ app.use((req, res, next) => {
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
     console.error("Internal Server Error:", err);
 
-    if (res.headersSent) {
-      return next(err);
-    }
+    if (res.headersSent) return next(err);
     return res.status(status).json({ message });
   });
 
@@ -219,18 +224,18 @@ app.use((req, res, next) => {
     () => {
       log(`serving on port ${port}`);
 
-      // WhatsApp auto-reconnect should never block server startup
-      if (!DISABLE_WHATSAPP) {
+      // WhatsApp auto-reconnect: ne doit jamais bloquer le serveur
+      if (DISABLE_WHATSAPP) {
+        console.log("[WhatsApp] Disabled (DISABLE_WHATSAPP=1)");
+      } else {
         setTimeout(async () => {
           try {
             const { whatsappManager } = await import("./whatsapp");
             await whatsappManager.autoReconnectAll();
           } catch (err: any) {
-            console.error("[WA-BAILEYS] Startup auto-reconnect failed:", err?.stack || err);
+            console.error("[WA] Startup auto-reconnect failed:", err?.stack || err);
           }
         }, 3000);
-      } else {
-        console.log("[WhatsApp] Disabled (DISABLE_WHATSAPP=1)");
       }
     },
   );
