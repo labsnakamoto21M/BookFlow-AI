@@ -871,12 +871,22 @@ export async function registerRoutes(
       const profile = await getOrCreateProviderProfile(req);
       const slotId = req.body.slotId as string;
       if (!slotId) return res.status(400).json({ message: "slotId required" });
-      
+
       const slot = await validateSlotOwnership(profile, slotId);
       if (!slot) return res.status(403).json({ message: "Slot not found or forbidden" });
-      
+
+      // Refresh QR Code
       await whatsappManager.refreshQR(profile.id, slotId);
+
+      // Get status WITH the QR Code
       const status = whatsappManager.getStatus(profile.id, slotId);
+
+      console.log("[DEBUG] refresh-qr response:", {
+        connected: status.connected,
+        hasQrCode: !!status.qrCode,
+        qrLength: status.qrCode?.length || 0
+      });
+
       res.json(status);
     } catch (error) {
       console.error("Error refreshing QR code:", error);
